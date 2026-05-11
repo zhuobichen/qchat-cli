@@ -1,0 +1,7 @@
+node_modules/
+output/
+temp/
+*.log
+pending-messages.json
+monitor-state.json
+.DS_Store
