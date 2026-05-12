@@ -7,6 +7,7 @@ import { exportCommand } from './commands/export.js';
 import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
+import { qzoneCommand } from './commands/qzone.js';
 
 const program = new Command();
 
@@ -22,5 +23,6 @@ exportCommand(program);
 backupCommand(program);
 sendCommand(program);
 monitorCommand(program);
+qzoneCommand(program);
 
 program.parse();
