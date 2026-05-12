@@ -88,6 +88,8 @@ qce qzone feeds <QQ号>                   # 查看说说
 | `qce qzone feeds [QQ号] [-n 20]` | 查看说说列表 |
 | `qce qzone post "内容" \| delete <tid>` | 发说说 / 删说说 |
 | `qce qzone like <tid>` | 查看点赞数 |
+| `qce qzone comments <tid> [QQ号] [-n 20]` | 查看评论（含回复） |
+| `qce qzone comment <QQ号> <tid> "内容"` | 评论说说 |
 | `qce qzone friends \| visitors \| albums` | 好友 / 访客 / 相册 |
 | `qce qzone board [QQ号] [-n 10]` | 留言板 |
 

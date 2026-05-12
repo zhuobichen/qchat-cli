@@ -199,6 +199,57 @@ export function qzoneCommand(program: Command): void {
       console.log(JSON.stringify(result, null, 2));
     });
 
+  // qce qzone comments [uin] <tid>
+  qzone
+    .command('comments')
+    .description('查看说说评论')
+    .argument('<tid>', '说说 TID')
+    .argument('[uin]', '说说所有者的 QQ 号 (默认自己)')
+    .option('-n, --num <num>', '获取数量', '20')
+    .action(async (tid: string, uin: string | undefined, options: { num: string }) => {
+      const client = getClient();
+      const target = parseInt(uin || String(client.uin));
+      const comments = await client.getMessageComments(target, tid, 0, parseInt(options.num));
+      console.log(chalk.bold(`评论列表 (共 ${comments?.length || 0} 条)`));
+      for (const c of comments || []) {
+        const id = c.id || c.tid || '';
+        const name = c.poster?.name || c.nickname || c.name || c.nick || '';
+        const time = c.postTime ? new Date(c.postTime * 1000).toLocaleString() : (c.createTime || '');
+        const text = (c.content || '').replace(/\n/g, ' ').slice(0, 80);
+        console.log(`  ${chalk.cyan(name)} ${chalk.gray(`[${id}]`)} ${chalk.dim(time)}`);
+        console.log(`    ${text}`);
+        const replies = c.replies;
+        if (replies && replies.length > 0) {
+          for (const r of replies) {
+            const rname = r.poster?.name || r.nickname || '';
+            const rtext = (r.content || '').replace(/\n/g, ' ').slice(0, 60);
+            console.log(`    ${chalk.yellow('↳')} ${chalk.cyan(rname)} ${rtext}`);
+          }
+        }
+      }
+    });
+
+  // qce qzone comment <uin> <tid> <content>
+  qzone
+    .command('comment')
+    .description('评论说说')
+    .argument('<uin>', '说说所有者的 QQ 号')
+    .argument('<tid>', '说说 TID')
+    .argument('<content>', '评论内容')
+    .action(async (uin: string, tid: string, content: string) => {
+      const client = getClient();
+      try {
+        const result = await client.postComment(parseInt(uin), tid, content);
+        if (result?.code === 0) {
+          console.log(chalk.green('评论成功!'));
+        } else {
+          console.log(chalk.red('评论失败:'), result?.message || '未知错误');
+        }
+      } catch (e: any) {
+        console.error(chalk.red('评论失败:'), e.message);
+      }
+    });
+
   // qce qzone albums [uin]
   qzone
     .command('albums')

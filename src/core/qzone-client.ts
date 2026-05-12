@@ -433,15 +433,48 @@ export class QZoneClient {
       fupdate: '1',
     });
   }
-  async postComment(uin: number, tid: string, content: string) {
+  async postComment(targetUin: number, tid: string, content: string) {
     return this.request(URLS.commentAdd, {
       g_tk: String(this.session!.gtk2),
-    }, { uin: String(uin), tid, content, format: 'json' });
+    }, {
+      topicId: `${targetUin}_${tid}__1`,
+      uin: String(this.session!.uin),
+      hostUin: String(targetUin),
+      feedsType: '100',
+      inCharset: 'utf-8',
+      outCharset: 'utf-8',
+      plat: 'qzone',
+      source: 'ic',
+      platformid: '52',
+      format: 'fs',
+      ref: 'feeds',
+      content,
+    });
   }
-  async replyToComment(uin: number, tid: string, commentId: string, content: string) {
+  async replyToComment(targetUin: number, tid: string, commentId: string, commentUin: string, content: string) {
     return this.request(URLS.replyAdd, {
       g_tk: String(this.session!.gtk2),
-    }, { uin: String(uin), tid, comment_id: commentId, content, format: 'json' });
+    }, {
+      topicId: `${targetUin}_${tid}__1`,
+      uin: String(this.session!.uin),
+      hostUin: String(targetUin),
+      feedsType: '100',
+      inCharset: 'utf-8',
+      outCharset: 'utf-8',
+      plat: 'qzone',
+      source: 'ic',
+      platformid: '52',
+      format: 'fs',
+      ref: 'feeds',
+      content,
+      commentId,
+      commentUin,
+      richval: '',
+      richtype: '',
+      private: '0',
+      paramstr: '2',
+      qzreferrer: `https://user.qzone.qq.com/${this.session!.uin}/main`,
+    });
   }
 
   // ══════════════════════════════════════
@@ -499,12 +532,23 @@ export class QZoneClient {
   // ══════════════════════════════════════
   // 评论列表 (ported from api_comment.go)
   // ══════════════════════════════════════
-  async getMessageComments(uin: number, tid: string, pos = 0, num = 20) {
+  async getMessageComments(targetUin: number, tid: string, pos = 0, num = 20) {
     const r = await this.request(URLS.msgComments, {
-      uin: String(uin), tid, pos: String(pos), num: String(num),
-      format: 'json', g_tk: String(this.session!.gtk2),
+      uin: String(this.session!.uin),
+      hostUin: String(targetUin),
+      topicId: `${targetUin}_${tid}`,
+      start: String(pos),
+      num: String(num),
+      order: '0',
+      format: 'jsonp',
+      inCharset: 'utf-8',
+      outCharset: 'utf-8',
+      ref: 'qzone',
+      random: String(Math.random()),
+      need_private_comment: '1',
+      g_tk: String(this.session!.gtk2),
     });
-    return r?.comments || r?.commentlist || [];
+    return r?.data?.comments || r?.comments || r?.commentlist || [];
   }
   async getAllMessageComments(uin: number, tid: string) {
     const all: any[] = [];
