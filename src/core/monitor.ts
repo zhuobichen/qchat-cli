@@ -21,11 +21,21 @@ export class MessageMonitor {
   private lastMessageSeq: Map<number, number> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
   private replyCallback: ((message: Message) => Promise<string>) | null = null;
+  private _selfId: number | null = null;
 
   constructor(client: OneBotClient) {
     this.client = client;
     const config = client.getConfig();
     this.wsUrl = `ws://${config.host}:${config.port}`;
+  }
+
+  private async getSelfId(): Promise<number> {
+    if (this._selfId !== null) return this._selfId;
+    try {
+      const info = await this.client.getLoginInfo();
+      this._selfId = info.user_id;
+      return this._selfId;
+    } catch { return 0; }
   }
 
   /**
@@ -114,7 +124,8 @@ export class MessageMonitor {
           if (lastSeq && msg.message_seq <= lastSeq) continue;
 
           // 跳过自己发的消息
-          if (msg.user_id === YOUR_QQ) continue; // TODO: 动态获取自己的 ID
+          const myId = await this.getSelfId();
+          if (myId && msg.user_id === myId) continue;
 
           // 显示消息
           this.displayMessage(msg);

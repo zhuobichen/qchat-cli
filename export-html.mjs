@@ -6,7 +6,8 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { join, basename } from 'path';
 
 const BRIDGE = 'http://127.0.0.1:3001';
-const PEER_UID = process.argv[2] || 'TARGET_QQ_1';
+if (!process.argv[2]) { console.log('用法: npx tsx export-html.mjs <QQ号> [chatType]'); process.exit(1); }
+const PEER_UID = process.argv[2];
 const CHAT_TYPE = parseInt(process.argv[3]) || 1;
 const OUT_DIR = 'E:/CodeProject/qchat-cli/output';
 const OUT_FILE = join(OUT_DIR, `full-history-${PEER_UID}.html`);
@@ -141,7 +142,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
       html += `<div class="date-sep"><span>${date}</span></div>\n`;
     }
 
-    const isMe = msg.sendType === 2 || msg.senderUin === 'YOUR_QQ';
+    const isMe = msg.sendType === 2;
     const cls = isMe ? 'msg-from-me' : 'msg-from-other';
     const sender = msg.sendNickName || msg.sendMemberName || msg.senderUid;
     const time = formatTime(msg.msgTime);
