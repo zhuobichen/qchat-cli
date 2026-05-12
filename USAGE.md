@@ -1,435 +1,242 @@
 # qchat-cli 使用文档
 
-本文件分为两部分：
-- **[Part A: AI 使用文档](#part-a-ai-使用文档)** — Claude Code / AI Agent 如何通过 CLI 和脚本操作 QQ
-- **[Part B: 人类使用文档](#part-b-人类使用文档)** — 人类需要做什么（启动服务、扫码、配置等）
+> 本项目为全 CLI 化工具。**人类只需启动服务 + 扫码，其余操作交给 AI 执行即可。**
 
 ---
 
-# Part A: AI 使用文档
+# Part A: AI 操作手册
 
-本文档面向 **Claude Code 或其他 AI Agent**，说明如何通过 CLI 命令和 Node.js 脚本操作 QQ 聊天和 QZone 空间。
-
-## A.1 前置条件
-
-以下组件由人类启动和维持（见 Part B），AI 只需确认可用：
-
-| 组件 | 地址 | 用途 |
-|------|------|------|
-| OneBot HTTP API | `http://127.0.0.1:3000` | 收发消息、好友/群列表 |
-| qce-bridge API | `http://127.0.0.1:3001` | 完整聊天记录导出（无 200 条限制） |
-| QZone Cookie | `.qzone-cookie` 文件 | QZone 空间 API 认证 |
-
-**验证命令**（AI 执行前先检查）：
-```bash
-curl -s http://127.0.0.1:3000/get_login_info    # OneBot 是否在线
-curl -s http://127.0.0.1:3001/health             # qce-bridge 是否可用
-```
-
-## A.2 项目路径
-
-本工具位于：`E:\CodeProject\qchat-cli`
-
-所有命令和脚本均在此目录下执行：
-```bash
-cd E:/CodeProject/qchat-cli
-```
-
-## A.3 OneBot CLI 命令 (`qce`)
-
-### 连接管理
-
-```bash
-# 查看/配置连接
-qce login --show           # 查看当前连接配置
-qce login --test           # 测试连接是否正常
-```
-
-### 查看列表
-
-```bash
-qce list friends           # 好友列表（含 QQ 号、昵称）
-qce list groups            # 群组列表
-qce list friends -s <关键词> # 搜索好友
-```
-
-### 导出聊天记录
-
-> 注意：OneBot API 最多返回 200 条。导出全量记录请用 `export-full-history.mjs`。
-
-```bash
-qce export <QQ号> --format json     # JSON 格式
-qce export <QQ号> --format md       # Markdown 格式
-qce export <QQ号> --format html     # HTML 格式
-qce export <QQ号> --limit 50        # 限制条数
-qce export <QQ号> --after 2026-01-01 # 指定起始日期
-```
-
-### 发送消息
-
-```bash
-qce send <QQ号> "消息内容"
-```
-
-**注意**：发送受安全机制控制，目标 QQ 号必须在白名单中。
-
-### 安全机制管理
-
-```bash
-qce safety status          # 查看安全状态
-qce safety allow <QQ号>    # 添加白名单
-qce safety deny <QQ号>     # 移除白名单
-```
-
-### 消息监听
-
-```bash
-qce monitor start <QQ号> --auto-reply    # 开始监听+自动回复
-qce monitor stop                         # 停止
-```
-
-## A.4 QZone CLI 命令 (`qce qzone`)
-
-### 登录管理
-
-```bash
-qce qzone login           # 扫码登录（AI 无法操作，提示人类扫码）
-qce qzone logout          # 清除登录
-```
-
-### 查看信息
-
-```bash
-qce qzone me              # 自己空间信息（昵称、签名、生日等）
-qce qzone user <QQ号>     # 他人空间名片（昵称、备注、亲密度等）
-qce qzone friends         # QZone 好友列表
-qce qzone visitors        # 空间访客记录
-qce qzone albums [QQ号]   # 相册列表
-```
-
-### 说说操作
-
-```bash
-qce qzone feeds [QQ号] [-n 20] [-p 0]   # 查看说说列表
-qce qzone post "内容"                     # 发说说
-qce qzone delete <tid>                   # 删说说
-qce qzone like <tid>                     # 查点赞数
-qce qzone board [QQ号] [-n 10]           # 看留言板
-```
-
-**参数说明**：
-- `-n, --num`: 获取条数（默认 10）
-- `-p, --pos`: 偏移量（默认 0）
-- `[QQ号]`: 可选，不传默认自己
-
-## A.5 独立运维脚本
-
-所有脚本用 `npx tsx` 执行（自动处理 TypeScript 导入）：
-
-```bash
-cd E:/CodeProject/qchat-cli && npx tsx <脚本名>
-```
-
-### QQ 聊天脚本
-
-| 脚本 | 命令 | 说明 |
-|------|------|------|
-| 监听+回复 | `npx tsx monitor-live.mjs` | 3s 轮询，基于 identity.md 自动回复白名单用户 |
-| 监听通知 | `npx tsx monitor-notify.mjs` | 轻量监听，新消息写入 `pending-messages.json` |
-| 导出历史(MD) | `npx tsx export-full-history.mjs <QQ号>` | 完整聊天记录 → Markdown（走 qce-bridge :3001） |
-| 导出历史(HTML) | `npx tsx export-html.mjs <QQ号>` | 完整聊天记录 → HTML，图片 base64 内嵌 |
-
-### QZone 脚本
-
-| 脚本 | 命令 | 说明 |
-|------|------|------|
-| 登录 | `npx tsx qzone-login.mjs` | 独立扫码登录（检查缓存 → 过期则重新扫码） |
-| 全部说说 | `npx tsx all-feeds.mjs` | 拉取指定用户全部说说，逐条显示 |
-| 检查点赞 | `npx tsx check-likes.mjs` | 逐条查询是否已赞 |
-| 批量补赞 | `npx tsx bulk-like.mjs` | 拉取全部 → 找未赞 → 逐条补赞 |
-| 检查+补赞 | `npx tsx fix-likes.mjs` | 推荐使用，分页逻辑最健壮 |
-| API 测试 | `npx tsx test-qzone.mjs` | 连通性测试（用户/好友/说说/访客/留言/点赞） |
-
-### 脚本中的可配置参数
-
-AI 执行脚本前，可能需要修改脚本内的常量：
-
-```javascript
-// monitor-live.mjs / monitor-notify.mjs
-const FRIENDS = [TARGET_QQ_1];  // 监听的私聊 QQ 号列表
-const GROUPS = [GROUP_QQ];    // 监听的群号列表
-const POLL_MS = 3000;          // 轮询间隔（毫秒）
-
-// all-feeds.mjs / check-likes.mjs / bulk-like.mjs / fix-likes.mjs
-const GUONAN = TARGET_QQ_1;     // 目标 QQ 号（可改为其他人）
-```
-
-## A.6 重要注意事项
-
-### 分页陷阱
-
-`qzone.getFeeds()` 的 `num` 参数不可靠，服务器可能返回少于请求的数量。**始终使用 `pos += batch.length` 递增偏移量**。
-
-```javascript
-// ❌ 错误：会跳过帖子
-pos += 50;
-
-// ✅ 正确：按实际返回数递增
-pos += batch.length;
-```
-
-### unikey 格式
-
-点赞相关操作中，unikey 必须用 `http://`（非 `https://`），否则服务端返回全零。
-
-```
-正确: http://user.qzone.qq.com/TARGET_QQ_1/mood/a260f055c43ef969f2bf0b00
-错误: https://user.qzone.qq.com/TARGET_QQ_1/mood/a260f055c43ef969f2bf0b00
-```
-
-### 2017 年老帖限制
-
-2017 年及更早的说说**无法点赞**。服务端返回 `code: 0, "succ"` 但实际不生效。这是服务端限制，无法绕过。
-
-### 限流
-
-连续大量请求会触发 `-10000` 限流（"使用人数过多"）。建议：
-- 请求间加 200-300ms 延迟
-- 限流后等待 15-30 分钟恢复
-
-### Cookie 有效期
-
-`.qzone-cookie` 中的 p_skey 会过期。执行 QZone 操作前先验证：
-```bash
-npx tsx qzone-login.mjs   # 自动检查并重新登录
-```
-
-## A.7 典型工作流
-
-### 工作流 1：查看某人的所有说说
+## A.1 项目路径与启动
 
 ```bash
 cd E:/CodeProject/qchat-cli
-# 修改 all-feeds.mjs 中的 GUONAN 为目标 QQ 号
-npx tsx all-feeds.mjs
 ```
 
-### 工作流 2：给某人补赞
+## A.2 前置检查
 
 ```bash
-cd E:/CodeProject/qchat-cli
-# 修改 fix-likes.mjs 中的 GUONAN 为目标 QQ 号
-npx tsx fix-likes.mjs
+curl -s http://127.0.0.1:3000/get_login_info  # OneBot 在线?
+curl -s http://127.0.0.1:3001/health           # qce-bridge 可用?
+npx tsx qzone-login.mjs                        # QZone cookie 有效?
 ```
 
-### 工作流 3：导出完整聊天记录（HTML 含图片）
+## A.3 CLI 命令全集
+
+### OneBot 聊天
+
+| 命令 | 说明 |
+|------|------|
+| `qce login --host localhost --port 3000` | 配置 NapCat 连接 |
+| `qce login --test` | 测试连接 |
+| `qce list friends` | 好友列表（QQ号+昵称） |
+| `qce list groups` | 群组列表 |
+| `qce list friends -s 关键词` | 搜索好友 |
+| `qce export <QQ号> --format json\|md\|html` | 导出聊天（OneBot，最多200条） |
+| `qce export <QQ号> --limit 50` | 限制条数 |
+| `qce send <QQ号> "消息"` | 发送消息（需白名单） |
+| `qce safety status` | 查看安全状态 |
+| `qce safety allow <QQ号>` | 添加白名单 |
+| `qce safety deny <QQ号>` | 移除白名单 |
+| `qce monitor start <QQ号> --auto-reply` | 监听+自动回复 |
+
+### QZone 空间
+
+| 命令 | 说明 |
+|------|------|
+| `qce qzone login` | 扫码登录 |
+| `qce qzone logout` | 清除登录 |
+| `qce qzone me` | 自己空间信息 |
+| `qce qzone user <QQ号>` | 他人空间名片 |
+| `qce qzone feeds [QQ号] [-n 20] [-p 0]` | 说说列表 |
+| `qce qzone post "内容"` | 发说说 |
+| `qce qzone delete <tid>` | 删说说 |
+| `qce qzone comments <tid> [QQ号] [-n 20]` | 查看评论（含回复） |
+| `qce qzone comment <QQ号> <tid> "内容"` | 发表评论 |
+| `qce qzone like <tid>` | 查点赞数 |
+| `qce qzone friends` | 好友列表 |
+| `qce qzone visitors` | 空间访客 |
+| `qce qzone board [QQ号] [-n 10]` | 留言板 |
+| `qce qzone albums [QQ号]` | 相册列表 |
+
+## A.4 运维脚本
+
+### 通用脚本（根目录，不含隐私信息）
 
 ```bash
-cd E:/CodeProject/qchat-cli
-npx tsx export-html.mjs <QQ号>
-# 输出: output/full-history-<QQ号>.html
+# 完整聊天历史导出（走 qce-bridge :3001，无 200 条限制）
+npx tsx export-html.mjs <QQ号>          # HTML（图片 base64 内嵌）
+npx tsx export-full-history.mjs <QQ号>   # Markdown
+
+# QZone 说说导出（含评论，HTML）
+npx tsx export-qzone-feeds.mjs [QQ号]   # 不传默认当前登录用户
+
+# QZone 登录
+npx tsx qzone-login.mjs                 # 检查/刷新 cookie
 ```
 
-### 工作流 4：启动监听+自动回复
+### 隐私脚本（`private/`，读取 `config.json`）
+
+> 使用前需配置：`cp private/config.example.json private/config.json`
 
 ```bash
-cd E:/CodeProject/qchat-cli
-# 确认 identity.md 人格文档已配置
-# 确认 monitor-live.mjs 中 FRIENDS/GROUPS 列表正确
-npx tsx monitor-live.mjs
+# QZone 运维（一个脚本覆盖所有操作）
+npx tsx private/qzone-ops.mjs feeds <名称>    # 查看全部说说
+npx tsx private/qzone-ops.mjs check <名称>    # 逐条检查点赞状态
+npx tsx private/qzone-ops.mjs like <名称>     # 检查+批量补赞
+npx tsx private/qzone-ops.mjs export <名称>   # 导出 HTML（含评论）
+
+# 消息监听
+npx tsx private/monitor-live.mjs              # 实时监听+人格回复
+npx tsx private/monitor-notify.mjs            # 轻量监听→pending-messages.json
 ```
+
+`config.json` 结构：
+```json
+{
+  "myQQ": 你的QQ号,
+  "monitoredFriends": [监听的好友QQ号],
+  "monitoredGroups": [监听的群号],
+  "qzoneTargets": {
+    "好友名": QQ号
+  }
+}
+```
+
+## A.5 典型工作流
+
+### 导出某人的 QZone 说说+评论
+```bash
+# 方式1：传 QQ 号（通用脚本）
+npx tsx export-qzone-feeds.mjs TARGET_QQ_1
+
+# 方式2：用配置名（隐私脚本，需已配置 config.json）
+npx tsx private/qzone-ops.mjs export 郭楠
+```
+
+### 给某人补赞
+```bash
+npx tsx private/qzone-ops.mjs like 郭楠
+```
+
+### 导出完整聊天记录
+```bash
+npx tsx export-html.mjs TARGET_QQ_1
+# → output/full-history-TARGET_QQ_1.html
+```
+
+### 检查某人空间状态并查看说说
+```bash
+qce qzone user TARGET_QQ_1
+qce qzone feeds TARGET_QQ_1 -n 20
+```
+
+## A.6 关键陷阱
+
+| 陷阱 | 说明 |
+|------|------|
+| **分页** | `getFeeds()` 用 `pos += batch.length`，不能 `pos += 50` |
+| **unikey** | 必须用 `http://` 而非 `https://`，否则点赞数据全 0 |
+| **2017 老帖** | 无法点赞，服务端静默拒绝 |
+| **限流** | 批量操作加 200-300ms 间隔，`-10000` 后等 15-30 分钟 |
+| **Cookie** | `.qzone-cookie` 定期过期，执行 QZone 操作前先 `qzone-login.mjs` |
 
 ---
 
-# Part B: 人类使用文档
+# Part B: 人类操作清单
 
-本文档面向 **人类操作者**，说明你需要手动完成的步骤。AI 无法代劳这些操作。
+> 以下步骤 AI 无法代劳，需要你手动完成。
 
-## B.1 一次性环境搭建
+## B.1 一次性环境
 
-### 1. 安装 Node.js
+### 1. 本机已就绪
 
-需要 Node.js 18+。
+| 组件 | 路径 | 状态 |
+|------|------|------|
+| Node.js 18+ | 系统安装 | ✅ |
+| NapCat Shell | `E:\CodeProject\NapCat.Shell\` | 已部署 |
+| qce-bridge 插件 | `E:\CodeProject\NapCat.Shell\plugins\qce-bridge\` | 已加载 |
+| qchat-cli | `E:\CodeProject\qchat-cli\` | 已安装 |
 
-```powershell
-node --version   # 确认版本
-```
-
-### 2. 克隆并安装 qchat-cli
+### 2. 给别人的安装步骤
 
 ```bash
-git clone <repo-url> qchat-cli
+git clone https://github.com/zhuobichen/qchat-cli.git
 cd qchat-cli
-npm install
-npm link          # 使 qce 命令全局可用
+npm install && npm link
+
+# 配置隐私信息
+cp private/config.example.json private/config.json
+# 编辑 config.json，填入 QQ 号和目标列表
 ```
 
-### 3. 启动 NapCat Shell
+## B.2 每次使用
 
+### 1. 启动 NapCat（如需聊天功能）
 ```powershell
 cd E:\CodeProject\NapCat.Shell
 .\launcher-user.bat
+# → 弹出登录窗口 → 手机 QQ 扫码登录
 ```
 
-### 4. 扫码登录 QQ
-
-NapCat Shell 启动后会弹出 QQ 登录界面，用手机 QQ **扫码登录**。
-
-> 注意：这是 NapCat 的 QQ 登录，不是 QZone 登录。两个是独立的。
-
-### 5. 验证 OneBot 和 qce-bridge
-
-打开浏览器或命令行验证：
-
-```bash
-# OneBot API（基础收发消息，端口 3000）
-curl http://127.0.0.1:3000/get_login_info
-
-# qce-bridge（完整历史导出，端口 3001）
-curl http://127.0.0.1:3001/health
-```
-
-两者都应返回正常 JSON 响应。
-
----
-
-## B.2 QZone 空间登录
-
-QZone 需要**独立登录**（不同于 NapCat 的 QQ 登录）。
-
-### 执行登录
-
+### 2. 登录 QZone（如需空间功能）
 ```bash
 cd E:\CodeProject\qchat-cli
 npx tsx qzone-login.mjs
+# → 弹出二维码 → 手机 QQ 扫码 → 确认登录
 ```
 
-### 你需要做的
+### 3. 配置 AI 人格（可选）
+编辑 `identity.md`，自定义自动回复风格。`monitor-live.mjs` 下次轮询自动生效，无需重启。
 
-1. 运行上述命令后，会生成 `qzone-qrcode.png` 图片并自动打开
-2. 用 **手机 QQ 扫码**（注意：是 QZone 扫码，用 QQ 的扫一扫功能）
-3. 在手机上确认登录
-4. 看到终端输出 "登录成功!" 即完成
+## B.3 告诉 AI 做什么
 
-### 会话有效期
+全部 CLI 化，直接用自然语言告诉 AI：
 
-登录凭证保存在 `.qzone-cookie` 文件中（已加入 `.gitignore`，不会上传 GitHub）。p_skey 会定期过期。如果 QZone 命令报 "Session expired"，重新执行 `qzone-login.mjs` 即可。
-
----
-
-## B.3 AI 人格配置
-
-AI 自动回复的人格由 `identity.md` 定义。
-
-### 编辑人格文件
-
-打开 `E:\CodeProject\qchat-cli\identity.md`，按自己喜好修改。
-
-当前版本 ("癫疯版") 特点：
-- 抽象话 + 流汗黄豆
-- 不承认自己是 AI
-- 极端懒散回复风格
-- 完全服从 Todd 的意志
-
-### 生效方式
-
-`monitor-live.mjs` 每次轮询时**重新读取** `identity.md`，所以修改后无需重启脚本，下次轮询自动生效。
-
----
-
-## B.4 日常操作
-
-### 启动 QQ 消息监听 + 自动回复
-
-```bash
-cd E:\CodeProject\qchat-cli
-npx tsx monitor-live.mjs
 ```
-
-此脚本会：
-1. 每 3 秒检查是否有新消息
-2. 如果是白名单内的好友私聊 → 拉取 20 条上下文
-3. 基于 `identity.md` 生成回复 → 自动发送
-
-**停止**：`Ctrl+C`
-
-### 导出聊天记录
-
-```bash
-# 标准导出（最近 200 条）
-qce export <QQ号> --format html
-
-# 完整导出（无 200 条限制，含图片 base64）
-npx tsx export-html.mjs <QQ号>
-```
-
-### 查看/管理 QZone
-
-```bash
-# 查看说说列表
-qce qzone feeds <QQ号> -n 20
-
-# 发说说
-qce qzone post "今天天气真好"
-
-# 删说说
-qce qzone delete <tid>
+"导出 TARGET_QQ_1 的聊天记录为 HTML"
+"查看郭楠的全部说说并导出"
+"给郭楠补赞"
+"启动消息监听和自动回复"
+"切换 QZone 账号"
 ```
 
 ---
 
-## B.5 注意事项
+## B.4 私密信息保护
 
-### 私密信息保护
-
-以下文件已在 `.gitignore` 中排除，**不要手动提交到 GitHub**：
-
-| 文件 | 内容 |
+| 文件 | 状态 |
 |------|------|
-| `.qzone-cookie` | QZone 登录 cookie（含 p_skey） |
-| `qzone-qrcode.png` | 临时二维码图片 |
-| `pending-messages.json` | 消息暂存文件 |
-| `monitor-state.json` | 监听状态文件 |
+| `private/config.json` | `.gitignore` 排除，`config.example.json` 是模板 |
+| `.qzone-cookie` | `.gitignore` 排除 |
+| `qzone-qrcode.png` | `.gitignore` 排除 |
+| `output/` | `.gitignore` 排除 |
+| `dist/` | `.gitignore` 排除 |
 
-### NapCat 启动顺序
+## B.5 故障排查
 
-1. 先启动 NapCat Shell (`launcher-user.bat`)
-2. 确认 QQ 登录成功
-3. 验证 `:3000` 和 `:3001` 端口可访问
-4. 再执行 qchat-cli 的监听/导出操作
-
-### NapCat 重启后
-
-重启 NapCat Shell 后，qce-bridge 插件会**自动重新加载**。验证：
-
-```bash
-curl http://127.0.0.1:3001/health   # 应返回 {"ok":true}
-```
-
-### 发送消息白名单
-
-向某人发送消息前，需要先将其加入白名单：
-
-```bash
-qce safety allow <QQ号>
-```
-
-这是防止 AI 误发消息的安全机制。
+| 现象 | 解决 |
+|------|------|
+| `qce login --test` 失败 | 启动 NapCat Shell |
+| `:3001/health` 无响应 | 重启 NapCat Shell |
+| QZone "未登录" | `npx tsx qzone-login.mjs` |
+| 导出只有 200 条 | 用 `export-html.mjs`（走 qce-bridge） |
+| 点赞不生效（2017 老帖） | 服务端限制，无法绕过 |
+| 请求过多 -10000 | 等 15-30 分钟 |
 
 ---
 
-## B.6 故障排查
+## 功能对照：refactor 前后
 
-| 现象 | 可能原因 | 解决 |
-|------|----------|------|
-| `qce login --test` 失败 | NapCat 未启动 | 启动 NapCat Shell |
-| `curl :3001/health` 无响应 | qce-bridge 未加载 | 重启 NapCat Shell |
-| QZone 命令报 "未登录" | Cookie 过期 | `npx tsx qzone-login.mjs` |
-| 导出只有 200 条 | 用了 OneBot API | 改用 `export-html.mjs`（走 qce-bridge） |
-| 说说列表返回少 | 分页 bug | 用 `fix-likes.mjs`（已修复） |
-| 点赞不生效 | 2017 年老帖 | 服务端限制，无法点赞 |
-| 频繁 -10000 错误 | 请求过多触发了限流 | 等待 15-30 分钟 |
+| 旧脚本 (已删除) | 新方式 | 说明 |
+|------|------|------|
+| `all-feeds.mjs` | `private/qzone-ops.mjs feeds` | 查看全部说说 |
+| `check-likes.mjs` | `private/qzone-ops.mjs check` | 检查点赞 |
+| `bulk-like.mjs` | `private/qzone-ops.mjs like` | 批量补赞 |
+| `fix-likes.mjs` | `private/qzone-ops.mjs like` | 同上，分页逻辑已内置 |
+| `test-qzone.mjs` | `qce qzone me/user/feeds/...` | 用 CLI 命令逐项验证 |
+| `monitor-live.mjs` | `private/monitor-live.mjs` | 改为读 `config.json` |
+| `monitor-notify.mjs` | `private/monitor-notify.mjs` | 改为读 `config.json` |
+| `monitor-daemon.mjs` | `private/monitor-live.mjs` | 功能合并 |
+| `watch-and-reply.mjs` | `private/monitor-live.mjs` | 功能合并 |
 
----
-
-*最后更新: 2026-05-12*
+> **无功能丢失**。所有能力已覆盖，QQ 号统一从 `config.json` 读取，不再硬编码。
