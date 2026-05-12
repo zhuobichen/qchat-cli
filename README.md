@@ -1,185 +1,142 @@
+<img src="" width="305" align=right />
+
+<div align="center">
+
 # qchat-cli
 
-QQ 聊天运维 CLI 工具，支持导出、发送、监听、自动回复。基于以下两个开源项目：
+*QQ Chat Operations CLI — Export, Send, Monitor, Reply, QZone.*
 
-| 项目 | 说明 |
-|------|------|
-| [NapCatQQ](https://github.com/NapNeko/NapCatQQ) | QQ 机器人框架，基于 NTQQ 协议，提供 OneBot HTTP API |
-| [qq-chat-exporter](https://github.com/NapNeko/qq-chat-exporter) | QQ 聊天记录导出工具（Web UI 版），本项目是其 CLI 化重构 |
+> 今人不见古时月，今月曾经照古人
 
-## 功能特性
+</div>
 
-- **完整聊天记录导出** — 通过 qce-bridge 插件直通 NapCat 内部 MsgApi，无 200 条限制
-- **多种导出格式** — Markdown、HTML（含图片 base64 内嵌）、JSON、TXT、CSV
-- **实时消息监听** — 3s 轻量轮询，发现新消息后拉取上下文
-- **人格化自动回复** — 基于 `identity.md` 人格文档，支持注入防御
-- **消息发送** — OneBot API 发包，支持白名单和确认机制
-- **会话管理** — 好友/群组列表、搜索
+---
 
-## 架构
+## ✨ v0.2.0 — QZone Integration
 
-```
-┌─────────────┐     OneBot HTTP      ┌──────────────┐
-│  NapCatQQ   │◄────────────────────►│   qchat-cli   │
-│  (NTQQ)     │     :3000            │  (CLI 工具)   │
-│             │                      │              │
-│  ┌────────┐ │     Internal MsgApi  │  导出/发送/   │
-│  │qce-bridge│◄────────────────────►│  监听/回复    │
-│  └────────┘ │     :3001            │              │
-└─────────────┘                      └──────────────┘
-```
+- ✨ **QZone API 客户端** — 扫码登录、说说拉取/发布/删除、点赞、评论、好友、访客、留言板、相册
+- ✨ **QZone CLI 子命令** — `qce qzone` 系列命令覆盖全部空间操作
+- ✨ **QZone 运维脚本** — 批量补赞、全量说说导出、点赞状态检查
+- 🐛 **分页漏帖修复** — `pos += batch.length` 替代固定步进，解决 80% 帖子被跳过的问题
+- 🔧 **文档重构** — 新增 WORKFLOW-REPORT.md 全流程记录 + USAGE.md 人机协作使用指南
 
-- **`:3000`** — OneBot 标准 API，有 200 条消息限制，用于日常收发和监听
-- **`:3001`** — qce-bridge 内部 API，msgId 分页，用于拉取完整聊天记录
+[完整变更记录 →](https://github.com/zhuobichen/qchat-cli/commits/master)
 
-## 前置要求
+---
 
-- Node.js 18+
-- [NapCatQQ](https://github.com/NapNeko/NapCatQQ) 已部署并运行
-- qce-bridge 插件已加载（`NapCat.Shell/plugins/qce-bridge/`，端口 3001）
+## Welcome
 
-## 安装
+**qchat-cli** is the devops toolkit for QQ chat — a CLI tool and script suite that wraps NapCatQQ's OneBot protocol for message export, delivery, monitoring, auto-reply, and full QZone space management.
+
+**qchat-cli** 是 QQ 聊天运维 CLI 工具。基于 NapCatQQ 的 OneBot 协议封装了消息导出、发送、监听与自动回复，并完整集成了 QZone 空间 Web API。
+
+---
+
+## Feature
+
+- **OneBot Message Export** — 多格式导出（JSON / TXT / Markdown / HTML / CSV），含图片 base64 内嵌
+- **Full History via qce-bridge** — 绕过 OneBot 200 条限制，msgId 分页拉取完整聊天记录
+- **Live Monitor & Auto-Reply** — 3s 轻量轮询，基于 `identity.md` 人格文档自动回复
+- **Safe Send with Whitelist** — 白名单 + 确认机制，防止 AI 误发消息
+- **QZone Full Integration** — 扫码登录、说说/点赞/评论/留言板/相册/好友/访客全部可操作
+- **Bulk Like & Feed Export** — 一键补赞、全量说说导出、点赞状态批量检查
+
+---
+
+## Quick Start
+
+> 前置要求：Node.js 18+，NapCatQQ 已部署并运行
 
 ```bash
-git clone <repo-url> qchat-cli
+git clone https://github.com/zhuobichen/qchat-cli.git
 cd qchat-cli
-npm install
-npm link
+npm install && npm link
 ```
-
-## 快速开始
-
-### 1. 配置连接
 
 ```bash
-qce login --host localhost --port 3000
-qce login --test   # 测试连接
+qce login --host localhost --port 3000   # 连接 NapCat
+qce login --test                         # 测试连接
+qce export <QQ号> --format html          # 导出聊天记录
+qce qzone login                          # 扫码登录 QZone
+qce qzone feeds <QQ号>                   # 查看说说
 ```
 
-### 2. 导出聊天记录
+> ⚠️ **首次使用前请阅读 [USAGE.md](./USAGE.md)** — Part B 列出人类需要手动操作的步骤（启动 NapCat、扫码等），AI 无法代劳。
 
-```bash
-# 基本导出（OneBot API，最多 200 条）
-qce export TARGET_QQ_1
+---
 
-# 完整导出（qce-bridge，无限制，含图片）
-node export-html.mjs TARGET_QQ_1    # HTML（图片 base64 内嵌）
-node export-full-history.mjs TARGET_QQ_1  # Markdown
-```
+## Command Reference
 
-### 3. 消息监听
+### OneBot
 
-```bash
-# 轻量监听 + 通知（推荐，配合 cron 使用）
-node monitor-notify.mjs
-
-# 实时监听 + 人格回复
-node monitor-live.mjs
-```
-
-### 4. 发送消息
-
-```bash
-qce send TARGET_QQ_1 "消息内容"
-```
-
-## 命令参考
-
-### `qce login` — 配置连接
-
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
-| `-H, --host <host>` | 主机地址 | localhost |
-| `-p, --port <port>` | 端口 | 3000 |
-| `-t, --token <token>` | Token | - |
-| `--test` | 测试连接 | - |
-| `--show` | 显示配置 | - |
-
-### `qce list` — 会话列表
-
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
-| `-t, --type <type>` | friend / group | 全部 |
-| `-s, --search <kw>` | 搜索关键词 | - |
-
-### `qce export` — 导出记录
-
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
-| `[session]` | 会话 ID（QQ号） | - |
-| `-f, --format <fmt>` | json / txt / html / excel | json |
-| `-o, --output <path>` | 输出目录 | ./output |
-| `--limit <n>` | 限制条数 | - |
-| `--after <date>` | 开始日期 | - |
-| `--before <date>` | 结束日期 | - |
-| `--all` | 导出所有会话 | - |
-
-### `qce send` — 发送消息
-
-| 选项 | 说明 |
+| 命令 | 说明 |
 |------|------|
-| `<session>` | 会话 ID |
-| `<message>` | 消息内容 |
-| `-t, --type <type>` | friend / group（默认 friend） |
+| `qce login --host <H> --port <P>` | 配置 NapCat 连接 |
+| `qce list friends \| groups` | 查看好友/群组列表 |
+| `qce export <QQ号> [--format json\|md\|html]` | 导出聊天记录 |
+| `qce send <QQ号> "消息"` | 发送消息 |
+| `qce safety allow\|deny <QQ号>` | 白名单管理 |
+| `qce monitor start <QQ号> [--auto-reply]` | 启动监听+自动回复 |
+| `qce backup --add <QQ号>` | 定时备份 |
 
-### `qce backup` — 定时备份
+### QZone
 
-| 选项 | 说明 |
+| 命令 | 说明 |
 |------|------|
-| `-s, --schedule <cron>` | Cron 表达式 |
-| `-o, --output <path>` | 备份目录 |
-| `--add <id>` | 添加会话 |
-| `--remove <id>` | 移除会话 |
-| `--list` | 显示配置 |
-| `--run` | 立即备份 |
+| `qce qzone login \| logout` | 扫码登录 / 登出 |
+| `qce qzone me \| user <QQ号>` | 查看空间信息 / 用户名片 |
+| `qce qzone feeds [QQ号] [-n 20]` | 查看说说列表 |
+| `qce qzone post "内容" \| delete <tid>` | 发说说 / 删说说 |
+| `qce qzone like <tid>` | 查看点赞数 |
+| `qce qzone friends \| visitors \| albums` | 好友 / 访客 / 相册 |
+| `qce qzone board [QQ号] [-n 10]` | 留言板 |
 
-## 脚本说明
+### Scripts
 
 | 脚本 | 用途 |
 |------|------|
-| `monitor-live.mjs` | 实时监听（3s 轮询），基于 identity.md 人格自动回复 |
-| `monitor-notify.mjs` | 轻量监听，新消息写入 pending-messages.json 供 cron 消费 |
-| `export-full-history.mjs` | 完整导出 → Markdown（走 qce-bridge :3001） |
-| `export-html.mjs` | 完整导出 → HTML，图片 base64 内嵌（走 qce-bridge :3001） |
-| `identity.md` | 人格文档，monitor-live.mjs 据此生成回复 |
+| `npx tsx monitor-live.mjs` | 实时监听 + 人格自动回复 |
+| `npx tsx monitor-notify.mjs` | 轻量监听 → pending-messages.json |
+| `npx tsx export-html.mjs <QQ号>` | 完整历史 → HTML（图片内嵌） |
+| `npx tsx export-full-history.mjs <QQ号>` | 完整历史 → Markdown |
+| `npx tsx qzone-login.mjs` | QZone 独立扫码登录 |
+| `npx tsx fix-likes.mjs` | 检查 + 批量补赞 |
+| `npx tsx all-feeds.mjs` | 导出全部说说 |
+| `npx tsx test-qzone.mjs` | QZone API 连通性测试 |
 
-## 配置文件
+---
 
-配置文件位置：
-- Windows: `%APPDATA%/qchat-cli/config.json`
-- macOS: `~/Library/Preferences/qchat-cli/config.json`
-- Linux: `~/.config/qchat-cli/config.json`
+## Architecture
 
-## 常见问题
+<img src="./qchat-cli架构图.png" width="100%" alt="qchat-cli 架构图" />
 
-### 连接失败
+---
 
-确保 NapCatQQ 已启动并启用了 HTTP 服务。验证：
-```bash
-curl http://127.0.0.1:3000/get_login_info  # OneBot
-curl http://127.0.0.1:3001/health           # qce-bridge
-```
+## Link
 
-### 导出消息不完整（只有 200 条）
+| ![docs] | ![npm] | ![node] |
+|:-:|:-:|:-:|
+| ![USAGE] | [![license]](LICENSE) | |
 
-OneBot API 有 200 条限制，使用 qce-bridge 脚本可拉取完整记录：
-```bash
-node export-html.mjs <QQ号>
-```
+[docs]: https://img.shields.io/badge/Docs-USAGE.md-blue?style=flat-square
+[npm]: https://img.shields.io/badge/npm-install-red?style=flat-square&logo=npm
+[node]: https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square&logo=node.js
+[USAGE]: https://img.shields.io/badge/📖-USAGE.md-4b8bbe?style=flat-square
+[license]: https://img.shields.io/badge/License-MIT-yellow?style=flat-square
 
-### qce-bridge 返回 0 条消息
+---
 
-重启 NapCat Shell，然后确认 `curl http://127.0.0.1:3001/health` 返回 `{"ok":true}`。
+## Thanks
 
-## 开发
+- **[NapCatQQ](https://github.com/NapNeko/NapCatQQ)** — QQ 机器人框架，提供稳定 OneBot HTTP API
+- **[qzone-go](https://github.com/fanchunke/qzone-go)** — QZone Web API 参考实现，本项目 QZone 部分据此移植
+- **[qq-chat-exporter](https://github.com/NapNeko/qq-chat-exporter)** — QQ 聊天记录导出工具 Web UI 版，本项目是其 CLI 化重构
+- 感谢所有深夜发送消息测试自动回复的郭楠群友
 
-```bash
-npm install
-npm run dev -- --help
-npm run build
-npm run typecheck
-```
+---
 
-## 许可证
+## License
 
-MIT
+MIT License. See [LICENSE](./LICENSE) for details.
+
+> 本项目仅供学习交流。请勿用于骚扰、刷屏等违反 QQ 用户协议的行为。
