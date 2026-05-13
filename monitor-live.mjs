@@ -62,21 +62,96 @@ if (!MY_ID || FRIENDS.length === 0) {
 
 const NAPCAT = 'http://127.0.0.1:3000';
 const POLL_MS = 3000;
-const IDENTITY_PATH = join(__dirname, 'identity.md');
+const IDENTITY_PATH = join(__dirname, cfg.identityFile || 'identity.md');
 const PENDING_FILE = join(__dirname, 'pending-messages.json');
+const MEMORY_DIR = join(__dirname, 'private', 'memory');
+const LOCK_DIR = join(__dirname, 'private', 'locks');
+
+// 确保目录存在
+if (!existsSync(MEMORY_DIR)) {
+  const { mkdirSync } = await import('fs');
+  mkdirSync(MEMORY_DIR, { recursive: true });
+}
+if (!existsSync(LOCK_DIR)) {
+  const { mkdirSync } = await import('fs');
+  mkdirSync(LOCK_DIR, { recursive: true });
+}
+
+// ═══ 文件锁（原子操作，防竞态） ═══
+function tryLock(msgId) {
+  const lockFile = join(LOCK_DIR, `${msgId}.lock`);
+  try {
+    // 使用 writeFileSync + wx flag 实现原子创建
+    writeFileSync(lockFile, String(Date.now()), { flag: 'wx' });
+    return true;  // 锁成功
+  } catch {
+    return false; // 文件已存在 = 已被锁
+  }
+}
 
 const USE_CLOUD = !!cfg.deepseekApiKey;
 const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages.json → Claude Code)';
 const DS_API_KEY = cfg.deepseekApiKey || '';
 const DS_BASE = 'https://api.deepseek.com';
 
-let friendLastTime = {};
-let friendContext = {};
-let processingMessages = new Set();
+let friendLastTime = {};       // 预加载后的初始时间戳边界
+let friendContext = {};        // 最近原始消息
+let friendContextSummary = {}; // 更早对话的压缩摘要
+
+const MAX_RAW_CONTEXT = cfg.maxRawContext || 20;  // 可在 config.json 中覆盖
+
+function updateContextSummary(uid, oldMsg) {
+  if (!friendContextSummary[uid]) friendContextSummary[uid] = [];
+  friendContextSummary[uid].push(`[${oldMsg.sender}] ${oldMsg.text.slice(0, 50)}`);
+  if (friendContextSummary[uid].length > 30) friendContextSummary[uid].shift();
+}
+
+function addContext(uid, sender, text, time) {
+  if (!friendContext[uid]) friendContext[uid] = [];
+  friendContext[uid].push({ sender, text, time: time || Date.now() });
+  // 溢出 → 移入摘要
+  while (friendContext[uid].length > MAX_RAW_CONTEXT) {
+    const old = friendContext[uid].shift();
+    updateContextSummary(uid, old);
+  }
+}
+
+function buildContextBlock(uid) {
+  let block = '';
+  const summary = friendContextSummary[uid];
+  if (summary?.length > 0) {
+    // AI 压缩的摘要（第一个元素是完整摘要文本）
+    const text = summary.length === 1 && summary[0].length > 50
+      ? summary[0]  // AI 生成的完整摘要
+      : summary.join('\n');  // 旧格式：逐条简述
+    block = `\n历史对话摘要：\n${text}`;
+  }
+  const ctx = friendContext[uid];
+  if (ctx?.length > 0) {
+    block += `\n\n最近对话：\n${ctx.map(c => `[${c.sender}]: ${c.text}`).join('\n')}`;
+  }
+  return block;
+}
 
 function loadIdentity() {
   try { return readFileSync(IDENTITY_PATH, 'utf-8'); }
   catch { return '你是一个友好的AI助手。'; }
+}
+
+// ═══ 记忆存储 ═══
+function memoryPath(uid) { return join(MEMORY_DIR, `${uid}.json`); }
+
+function loadMemory(uid) {
+  try { return JSON.parse(readFileSync(memoryPath(uid), 'utf-8')); }
+  catch { return []; }
+}
+
+function saveMemory(uid, entry) {
+  const mem = loadMemory(uid);
+  mem.push({ time: Date.now(), ...entry });
+  // 只保留最近 50 条记忆
+  if (mem.length > 50) mem.splice(0, mem.length - 50);
+  writeFileSync(memoryPath(uid), JSON.stringify(mem, null, 2));
 }
 
 async function api(url, body) {
@@ -86,6 +161,103 @@ async function api(url, body) {
     body: JSON.stringify(body),
   });
   return (await res.json()).data?.messages || [];
+}
+
+// ═══ 启动时预加载历史消息（走 qce-bridge 无限制拉取） ═══
+const BRIDGE = 'http://127.0.0.1:3001';
+
+async function preloadHistory(uid) {
+  console.log(`  预加载 ${uid} 的完整历史...`);
+  try {
+    // 走 qce-bridge 全量拉取（count 设大值，一次拿全部）
+    const res = await fetch(`${BRIDGE}/get_full_msg_history`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peerUid: String(uid), chatType: 1, count: 10000 }),
+    });
+    const data = await res.json();
+    const allMsgs = data.messages || [];
+    if (allMsgs.length === 0) {
+      console.log(`    (无历史)`);
+      return;
+    }
+    console.log(`    ✓ 已载入 ${allMsgs.length} 条完整历史`);
+    // 按时间排序后载入上下文
+    allMsgs.sort((a, b) => (a.msgTime || 0) - (b.msgTime || 0));
+    for (const msg of allMsgs) {
+      const isMe = msg.sendType === 2 || msg.sendType === 0;
+      const elements = msg.elements || [];
+      const text = elements.map(el => {
+        if (el.textElement) return el.textElement.content || '';
+        if (el.data?.text) return el.data.text;
+        return '';
+      }).join('').trim();
+      if (!text) continue;
+      const sender = isMe ? 'me' : (msg.sendNickName || msg.sendMemberName || msg.senderUid || '');
+      addContext(uid, sender, text, msg.msgTime || 0);
+    }
+    if (allMsgs.length > 0) {
+      const times = allMsgs.map(m => m.msgTime || 0).filter(Boolean);
+    }
+    // 预加载的消息全部加文件锁
+    for (const msg of allMsgs) {
+      tryLock(msg.msgId || `${msg.msgTime}_${msg.msgSeq}`);
+    }
+    // 设置时间戳边界（兜底：防止 OneBot/qce-bridge ID 格式不一致导致的重复）
+    const times = allMsgs.map(m => m.msgTime || 0).filter(Boolean);
+    if (times.length > 0) friendLastTime[uid] = Math.max(...times);
+    // ── AI 压缩历史为摘要（只生成一次，存文件复用） ──
+    const summaryFile = join(MEMORY_DIR, `${uid}_summary.txt`);
+    if (existsSync(summaryFile)) {
+      // 已有摘要，直接加载
+      const saved = readFileSync(summaryFile, 'utf-8').trim();
+      if (saved) {
+        friendContextSummary[uid] = [saved];
+        console.log(`    ✓ 已加载历史摘要 (${saved.length} 字)`);
+      }
+    } else if (USE_CLOUD && allMsgs.length > 0) {
+      console.log('    AI 正在生成历史摘要（仅此一次）...');
+      try {
+        const historyText = allMsgs.slice(0, 300).map(m => {
+          const isMe = m.sendType === 2 || m.sendType === 0;
+          const name = isMe ? '我' : (m.sendNickName || m.sendMemberName || m.senderUid || '');
+          const text = (m.elements || []).map(el => {
+            if (el.textElement) return el.textElement.content || '';
+            if (el.data?.text) return el.data.text;
+            return '';
+          }).join('');
+          return `[${name}]: ${text}`;
+        }).join('\n');
+
+        const compressRes = await fetch(`${DS_BASE}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${DS_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: 'deepseek-v4-pro',
+            messages: [{
+              role: 'user',
+              content: `请将以下两个人的QQ聊天历史压缩为一个简洁摘要。保留：关键话题、重要事件、对方的性格偏好、我们之间的称呼。控制在300字以内。\n\n${historyText}`,
+            }],
+            max_tokens: 500,
+          }),
+        });
+        const compressData = await compressRes.json();
+        const summary = compressData.choices?.[0]?.message?.content?.trim();
+        if (summary) {
+          friendContextSummary[uid] = [summary];
+          writeFileSync(summaryFile, summary, 'utf-8');
+          console.log(`    ✓ AI 摘要已生成并保存 (${summary.length} 字)`);
+        }
+      } catch (e) {
+        console.log(`    ⚠ AI 压缩失败，使用截断摘要: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.log(`\r    ✗ 加载失败: ${e.message}（将仅监听新消息）`);
+  }
 }
 
 async function sendMessage(userId, text) {
@@ -99,17 +271,28 @@ async function sendMessage(userId, text) {
 
 async function cloudReply(uid, text) {
   const identity = loadIdentity();
-  if (!friendContext[uid]) friendContext[uid] = [];
-  friendContext[uid].push({ sender: uid, text, time: Date.now() });
-  if (friendContext[uid].length > 20) friendContext[uid].shift();
+  addContext(uid, uid, text, Date.now());
 
-  const prompt = `你是以下身份人格。请对以下消息生成回复（≤50字，符合人格风格）：
+  const memory = loadMemory(uid);
+  let memoryBlock = '';
+  if (memory.length > 0) {
+    // 只取最近 5 条 + 关键词匹配的旧条目
+    const recent = memory.slice(-5);
+    const keywords = text.split(/[\s，。！？、]+/).filter(w => w.length >= 2);
+    const matched = memory.slice(0, -5).filter(m =>
+      keywords.some(kw => m.topic?.includes(kw) || m.summary?.includes(kw))
+    ).slice(-3);
+    const relevant = [...matched, ...recent];
+    if (relevant.length > 0) {
+      memoryBlock = `\n\n相关记忆：\n${relevant.map(m => `- ${m.topic}: ${m.summary}`).join('\n')}`;
+    }
+  }
+
+  const prompt = `你是以下身份人格。请对以下消息生成回复（符合人格风格，无需限制长度）。
 
 身份人格：
-${identity}
-
-最近对话上下文：
-${friendContext[uid].map(c => `[${c.sender}]: ${c.text}`).join('\n')}
+${identity}${memoryBlock}
+${buildContextBlock(uid)}
 
 请只输出回复内容，不要附加任何解释。`;
 
@@ -122,9 +305,7 @@ ${friendContext[uid].map(c => `[${c.sender}]: ${c.text}`).join('\n')}
     body: JSON.stringify({
       model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: prompt }],
-      reasoning_effort: 'high',
-      extra_body: { thinking: { type: 'enabled' } },
-      max_tokens: 200,
+      max_tokens: 2000,
     }),
   });
 
@@ -152,48 +333,54 @@ async function poll() {
       const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 5 });
       if (!msgs || msgs.length === 0) continue;
 
+      // 双重过滤：message_id 锁 + 时间戳边界
       const lastTime = friendLastTime[uid] || 0;
-      const newMsgs = msgs.filter(m => m.time > lastTime);
-      if (msgs.length > 0) friendLastTime[uid] = Math.max(...msgs.map(m => m.time));
+      const msgTimes = msgs.map(m => m.time);
+      console.log(`  [poll uid=${uid}] lastTime=${lastTime} msgTimes=[${msgTimes.slice(0,5).join(',')}]`);
+      const newMsgs = msgs.filter(m => {
+        if (m.time <= lastTime) return false;
+        const lockId = m.message_id || m.real_id || `${m.time}_${m.message_seq}`;
+        return tryLock(lockId);
+      });
+      if (newMsgs.length > 0) console.log(`  [poll uid=${uid}] newMsgs=${newMsgs.length} firstTime=${newMsgs[0]?.time}`);
+      if (msgs.length > 0) {
+        // 只用非自己发的消息更新时间边界（防止 AI 回复推高边界，导致对方新消息被过滤）
+        const otherTimes = msgs.filter(m => Number(m.sender?.user_id) !== MY_ID).map(m => m.time || 0);
+        if (otherTimes.length > 0) {
+          const maxTime = Math.max(...otherTimes);
+          if (maxTime > lastTime) friendLastTime[uid] = maxTime;
+        }
+      }
 
       for (const msg of newMsgs) {
-        const msgKey = `${msg.sender?.user_id}_${msg.time}`;
-        if (processingMessages.has(msgKey)) continue;
-        processingMessages.add(msgKey);
+        const msgId = msg.message_id || msg.real_id || `${msg.time}_${msg.message_seq}`;
+        console.log(`  [debug msg] senderUid=${msg.sender?.user_id} (type=${typeof msg.sender?.user_id}) MY_ID=${MY_ID} time=${msg.time}`);
 
-        if (msg.sender?.user_id === MY_ID) {
+        if (Number(msg.sender?.user_id) === MY_ID) {
           const myText = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
-          if (myText) {
-            if (!friendContext[uid]) friendContext[uid] = [];
-            friendContext[uid].push({ sender: 'me', text: myText, time: msg.time || Date.now() });
-            if (friendContext[uid].length > 20) friendContext[uid].shift();
-          }
-          processingMessages.delete(msgKey);
+          if (myText) addContext(uid, 'me', myText, msg.time);
           continue;
         }
 
         const text = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
-        if (!text) { processingMessages.delete(msgKey); continue; }
+        if (!text) continue;
 
         const nick = msg.sender?.nickname || String(msg.sender?.user_id);
         console.log(`[${new Date().toLocaleTimeString()}] ${nick}: ${text.slice(0, 60)}`);
 
-        if (!friendContext[uid]) friendContext[uid] = [];
-        friendContext[uid].push({ sender: nick, text, time: msg.time || Date.now() });
-        if (friendContext[uid].length > 20) friendContext[uid].shift();
+        addContext(uid, nick, text, msg.time);
 
         const alreadyReplied = newMsgs.some(m =>
-          m.sender?.user_id === MY_ID && m.time >= msg.time
+          Number(m.sender?.user_id) === MY_ID && m.time >= msg.time
         );
         if (alreadyReplied) {
           console.log(`  ⏭ 已手动回复，跳过`);
-          processingMessages.delete(msgKey);
+          saveMemory(uid, { topic: text.slice(0, 30), summary: '(手动回复)' });
           continue;
         }
 
         if (!REPLY_WHITELIST.has(uid)) {
           console.log(`  ⚠ ${nick} 不在回复白名单，仅监听`);
-          processingMessages.delete(msgKey);
           continue;
         }
 
@@ -202,9 +389,9 @@ async function poll() {
             const reply = await cloudReply(uid, text);
             if (reply) {
               await sendMessage(uid, reply);
-              friendContext[uid].push({ sender: 'me', text: reply, time: Date.now() });
-              if (friendContext[uid].length > 20) friendContext[uid].shift();
+              addContext(uid, 'me', reply, Date.now());
               console.log(`  → 已回复: ${reply.slice(0, 50)}`);
+              saveMemory(uid, { topic: text.slice(0, 30), summary: reply.slice(0, 60) });
             }
           } catch (e) {
             console.error(`  ✗ 云端回复失败: ${e.message}`);
@@ -213,7 +400,6 @@ async function poll() {
           localPipe(uid, nick, text, msg.time);
           console.log(`  → 已写入 pending，等待 Claude Code 处理`);
         }
-        processingMessages.delete(msgKey);
       }
     } catch (e) {}
   }
@@ -225,7 +411,15 @@ console.log('  qchat-cli 消息监听已启动');
 console.log(`  模式: ${MODE}`);
 console.log(`  私聊: ${FRIENDS.join(', ')}`);
 console.log(`  群聊: ${(cfg.monitoredGroups || []).join(', ') || '(无)'}`);
-console.log(`  人格: identity.md (每次轮询重新读取)`);
+console.log(`  人格: ${cfg.identityFile || 'identity.md'} (每次轮询重新读取)`);
 console.log(`  配置: ${existsSync(privateConfig) ? 'private/config.json' : '命令行参数'}`);
 console.log('═══════════════════════════════════');
+
+// 预加载每个好友的最近历史
+console.log('\n正在加载历史消息...');
+for (const uid of FRIENDS) {
+  await preloadHistory(uid);
+}
+console.log('');
+
 poll();

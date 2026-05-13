@@ -9,3 +9,5 @@ monitor-state.json
 .qzone-cookie
 qzone-qrcode.png
 private/config.json
+private/memory/
+private/locks/

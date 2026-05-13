@@ -36,7 +36,7 @@
 
 - **OneBot Message Export** — 多格式导出（JSON / TXT / Markdown / HTML / CSV），含图片 base64 内嵌
 - **Full History via qce-bridge** — 绕过 OneBot 200 条限制，msgId 分页拉取完整聊天记录
-- **Live Monitor & Auto-Reply** — 3s 轻量轮询，基于 `identity.md` 人格文档自动回复
+- **Live Monitor & Auto-Reply** — 双模式（云端 DeepSeek / 本地管道），全量历史预加载 + AI 摘要压缩 + 按人记忆存储 + 20 条上下文窗口
 - **Safe Send with Whitelist** — 白名单 + 确认机制，防止 AI 误发消息
 - **QZone Full Integration** — 扫码登录、说说/点赞/评论/留言板/相册/好友/访客全部可操作
 - **Bulk Like & Feed Export** — 一键补赞、全量说说导出、点赞状态批量检查

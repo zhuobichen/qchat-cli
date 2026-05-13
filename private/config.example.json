@@ -4,5 +4,7 @@
   "monitoredGroups": [],
   "replyWhitelist": [],
   "qzoneTargets": {},
-  "deepseekApiKey": ""
+  "deepseekApiKey": "",
+  "maxRawContext": 20,
+  "identityFile": "identity.md"
 }

@@ -121,6 +121,56 @@ npx tsx private/monitor-notify.mjs            # 轻量监听 → pending-message
 | 云端自动回复 | 加上 `--api-key sk-xxx`，模型 deepseek-v4-pro |
 | 本地管道回复 | 不传 `--api-key`，消息写入 `pending-messages.json` 待 Claude Code 消费 |
 
+### 监听架构
+
+```
+启动 → qce-bridge 拉取全部聊天历史
+  ↓
+AI 压缩为摘要（仅首次，存 private/memory/<QQ>_summary.txt）
+  ↓
+最近 20 条原始消息 + AI 摘要 + 记忆 + 人格 → 拼接 prompt
+  ↓
+DeepSeek API 生成回复 → 发送 → 保存新记忆
+```
+
+**每次回复注入的信息模块：**
+
+| 模块 | 来源 | 说明 |
+|------|------|------|
+| 人格 | `identity.md` | 每次读取，改完即时生效 |
+| AI 历史摘要 | `private/memory/<QQ>_summary.txt` | 首次生成，后续复用 |
+| 最近上下文 | 内存 | 最近 20 条原始消息 |
+| 对话记忆 | `private/memory/<QQ>.json` | 每次回复自动追加 |
+
+**config.json 完整字段：**
+
+```json
+{
+  "myQQ": 0,
+  "monitoredFriends": [],
+  "monitoredGroups": [],
+  "replyWhitelist": [],
+  "qzoneTargets": {},
+  "deepseekApiKey": "",
+  "maxRawContext": 20
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `myQQ` | 自己的 QQ 号 |
+| `monitoredFriends` | 监听的好友列表 |
+| `replyWhitelist` | 允许自动回复的好友（为空不回复任何人） |
+| `deepseekApiKey` | DeepSeek API 密钥（有则云端回复） |
+| `maxRawContext` | 保留的原始消息条数，默认 20 |
+
+### 安全机制
+
+- `replyWhitelist` 为空时**绝不自动回复**
+- 检测到手动已回的消息自动跳过，不重复回复
+- 并发轮询去重，防止同一条消息被处理两次
+- `private/config.json`、`private/memory/` 均在 `.gitignore` 中
+
 ## A.5 典型工作流
 
 ### 导出聊天记录
