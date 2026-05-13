@@ -89,6 +89,9 @@ function tryLock(msgId) {
   }
 }
 
+// ══════════════════════════════════════════
+// 模式切换：有 deepseekApiKey → 云端，无 → 本地
+// ══════════════════════════════════════════
 const USE_CLOUD = !!cfg.deepseekApiKey;
 const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages.json → Claude Code)';
 const DS_API_KEY = cfg.deepseekApiKey || '';
@@ -269,6 +272,7 @@ async function sendMessage(userId, text) {
   });
 }
 
+// ═══ 云端回复：DeepSeek API ═══
 async function cloudReply(uid, text) {
   const identity = loadIdentity();
   addContext(uid, uid, text, Date.now());
@@ -314,6 +318,7 @@ ${buildContextBlock(uid)}
   return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
+// ═══ 本地管道：写入 pending-messages.json ═══
 function localPipe(uid, senderNick, text, msgTime) {
   let pending = [];
   try { pending = JSON.parse(readFileSync(PENDING_FILE, 'utf-8')); } catch {}
@@ -371,7 +376,9 @@ async function poll() {
           continue;
         }
 
+        // ── 回复入口：云端 / 本地 ──
         if (USE_CLOUD) {
+          // 【云端模式】调用 DeepSeek API 自动生成回复
           try {
             const reply = await cloudReply(uid, text);
             if (reply) {
@@ -384,6 +391,7 @@ async function poll() {
             console.error(`  ✗ 云端回复失败: ${e.message}`);
           }
         } else {
+          // 【本地模式】写入 pending-messages.json，由 Claude Code 消费
           localPipe(uid, nick, text, msg.time);
           console.log(`  → 已写入 pending，等待 Claude Code 处理`);
         }
