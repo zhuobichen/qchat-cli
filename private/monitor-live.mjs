@@ -29,6 +29,7 @@ const DS_BASE = 'https://api.deepseek.com';
 
 let friendLastTime = {};
 let friendContext = {};
+let processingMessages = new Set();  // 正在处理中的消息（防并轮询重复）
 
 // ═══ 工具函数 ═══
 function loadIdentity() {
@@ -116,6 +117,11 @@ async function poll() {
       if (msgs.length > 0) friendLastTime[uid] = Math.max(...msgs.map(m => m.time));
 
       for (const msg of newMsgs) {
+        // 防并发重复：同一消息正在被另一个轮询周期处理
+        const msgKey = `${msg.sender?.user_id}_${msg.time}`;
+        if (processingMessages.has(msgKey)) continue;
+        processingMessages.add(msgKey);
+
         if (msg.sender?.user_id === MY_ID) {
           // 自己发的消息也记入上下文（保持对话连贯）
           const myText = msg.message
@@ -126,6 +132,7 @@ async function poll() {
             friendContext[uid].push({ sender: 'me', text: myText, time: msg.time || Date.now() });
             if (friendContext[uid].length > 20) friendContext[uid].shift();
           }
+          processingMessages.delete(msgKey);
           continue;
         }
         const text = msg.message
@@ -147,12 +154,14 @@ async function poll() {
         );
         if (alreadyReplied) {
           console.log(`  ⏭ 已手动回复，跳过`);
+          processingMessages.delete(msgKey);
           continue;
         }
 
         const canReply = REPLY_WHITELIST.has(uid);
         if (!canReply) {
           console.log(`  ⚠ ${nick} 不在回复白名单，仅监听`);
+          processingMessages.delete(msgKey);
           continue;
         }
 
@@ -161,7 +170,6 @@ async function poll() {
             const reply = await cloudReply(uid, text);
             if (reply) {
               await sendMessage(uid, reply);
-              // 自己的回复也入上下文
               friendContext[uid].push({ sender: 'me', text: reply, time: Date.now() });
               if (friendContext[uid].length > 20) friendContext[uid].shift();
               console.log(`  → 已回复: ${reply.slice(0, 50)}`);
@@ -173,6 +181,7 @@ async function poll() {
           localPipe(uid, nick, text, msg.time);
           console.log(`  → 已写入 pending，等待 Claude Code 处理`);
         }
+        processingMessages.delete(msgKey);
       }
     } catch (e) {
       // 单次轮询失败不中断
