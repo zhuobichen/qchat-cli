@@ -140,6 +140,15 @@ async function poll() {
         friendContext[uid].push({ sender: nick, text, time: msg.time || Date.now() });
         if (friendContext[uid].length > 20) friendContext[uid].shift();
 
+        // 检查是否已被自己回复（手机/其他设备已回）
+        const alreadyReplied = newMsgs.some(m =>
+          m.sender?.user_id === MY_ID && m.time >= msg.time
+        );
+        if (alreadyReplied) {
+          console.log(`  ⏭ 已手动回复，跳过`);
+          continue;
+        }
+
         const canReply = REPLY_WHITELIST.has(uid);
         if (!canReply) {
           console.log(`  ⚠ ${nick} 不在回复白名单，仅监听`);
