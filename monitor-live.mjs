@@ -206,8 +206,7 @@ async function preloadHistory(uid) {
     for (const msg of allMsgs) {
       tryLock(msg.msgId || `${msg.msgTime}_${msg.msgSeq}`);
     }
-    // 用当前时间做边界（不用历史消息时间，避免新消息被误过滤）
-    friendLastTime[uid] = Math.floor(Date.now() / 1000);
+    // 边界稍后再设（等所有预加载完成）
     // ── AI 压缩历史为摘要（只生成一次，存文件复用） ──
     const summaryFile = join(MEMORY_DIR, `${uid}_summary.txt`);
     if (existsSync(summaryFile)) {
@@ -426,6 +425,9 @@ console.log('\n正在加载历史消息...');
 for (const uid of FRIENDS) {
   await preloadHistory(uid);
 }
+// 全部预加载完成后设时间边界
+const startTime = Math.floor(Date.now() / 1000);
+for (const uid of FRIENDS) friendLastTime[uid] = startTime;
 console.log('');
 
 poll();
