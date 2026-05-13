@@ -27,7 +27,7 @@ const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages
 const DS_API_KEY = cfg.deepseekApiKey || '';
 const DS_BASE = 'https://api.deepseek.com';
 
-let friendLastSeq = {};
+let friendLastTime = {};
 let friendContext = {};
 
 // ═══ 工具函数 ═══
@@ -110,9 +110,10 @@ async function poll() {
       const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 5 });
       if (!msgs || msgs.length === 0) continue;
 
-      const lastSeq = friendLastSeq[uid] || 0;
-      const newMsgs = msgs.filter(m => m.message_seq > lastSeq);
-      friendLastSeq[uid] = Math.max(...msgs.map(m => m.message_seq));
+      // 注意: message_seq 不是按时间递增的！用时间戳+message_id 组合去重
+      const lastTime = friendLastTime[uid] || 0;
+      const newMsgs = msgs.filter(m => m.time > lastTime);
+      if (msgs.length > 0) friendLastTime[uid] = Math.max(...msgs.map(m => m.time));
 
       for (const msg of newMsgs) {
         if (msg.sender?.user_id === MY_ID) {
