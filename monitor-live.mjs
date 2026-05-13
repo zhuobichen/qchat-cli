@@ -94,6 +94,7 @@ const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages
 const DS_API_KEY = cfg.deepseekApiKey || '';
 const DS_BASE = 'https://api.deepseek.com';
 
+let friendLastTime = {};       // 预加载后的时间边界（仅用于过滤历史消息）
 let friendContext = {};        // 最近原始消息
 let friendContextSummary = {}; // 更早对话的压缩摘要
 
@@ -202,6 +203,9 @@ async function preloadHistory(uid) {
     for (const msg of allMsgs) {
       tryLock(msg.msgId || `${msg.msgTime}_${msg.msgSeq}`);
     }
+    // 设置时间边界（兜底：qce-bridge 和 OneBot 对同一消息的 ID 可能不同）
+    const maxTime = Math.max(...allMsgs.map(m => m.msgTime || 0));
+    if (maxTime > 0) friendLastTime[uid] = maxTime;
     // ── AI 压缩历史为摘要（只生成一次，存文件复用） ──
     const summaryFile = join(MEMORY_DIR, `${uid}_summary.txt`);
     if (existsSync(summaryFile)) {
@@ -330,13 +334,12 @@ async function poll() {
       if (!msgs || msgs.length === 0) continue;
 
       for (const msg of msgs) {
-        // 纯 message_id 去重（文件锁，原子操作）
+        // 时间边界过滤（防止 qce-bridge/OneBot ID 不一致导致历史消息重复处理）
+        if (msg.time <= (friendLastTime[uid] || 0)) continue;
+
+        // message_id 去重（文件锁，原子操作）
         const msgId = msg.message_id || msg.real_id || `${msg.time}_${msg.message_seq}`;
-        const locked = tryLock(msgId);
-        if (!msg.sender || Number(msg.sender.user_id) !== MY_ID) {
-          console.log(`  [lock] msgId=${msgId} locked=${locked} sender=${msg.sender?.user_id} time=${msg.time}`);
-        }
-        if (!locked) continue;  // 处理过或正在处理 → 跳过
+        if (!tryLock(msgId)) continue;
 
         // 自己发的消息 → 记上下文后跳过
         if (Number(msg.sender?.user_id) === MY_ID) {
