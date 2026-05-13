@@ -2,12 +2,12 @@
  * 实时消息监听 + 智能回复
  *
  * 双模式（自动选择）：
- *   有 ANTHROPIC_API_KEY → 云端 Claude API 回复
- *   无 ANTHROPIC_API_KEY → 写入 pending-messages.json，由 Claude Code 消费
+ *   有 deepseekApiKey → 云端 DeepSeek API 回复
+ *   无 deepseekApiKey → 写入 pending-messages.json，由 Claude Code 消费
  *
  * 用法: npx tsx private/monitor-live.mjs
  */
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { loadConfig } from './load-config.mjs';
 
 const cfg = loadConfig();
@@ -21,8 +21,10 @@ const IDENTITY_PATH = './identity.md';
 const PENDING_FILE = './pending-messages.json';
 
 // ═══ 模式判断 ═══
-const USE_CLOUD = !!process.env.ANTHROPIC_API_KEY;
-const MODE = USE_CLOUD ? '云端 API' : '本地管道 (pending-messages.json → Claude Code)';
+const USE_CLOUD = !!cfg.deepseekApiKey;
+const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages.json → Claude Code)';
+const DS_API_KEY = cfg.deepseekApiKey || '';
+const DS_BASE = 'https://api.deepseek.com';
 
 let friendLastSeq = {};
 let friendContext = {};
@@ -67,23 +69,24 @@ ${friendContext[uid].map(c => `[${c.sender}]: ${c.text}`).join('\n')}
 
 请只输出回复内容，不要附加任何解释。`;
 
-  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+  const aiRes = await fetch(`${DS_BASE}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': `Bearer ${DS_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 100,
+      model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: prompt }],
+      reasoning_effort: 'high',
+      extra_body: { thinking: { type: 'enabled' } },
+      max_tokens: 200,
     }),
   });
 
   if (!aiRes.ok) throw new Error(`API ${aiRes.status}`);
   const data = await aiRes.json();
-  return data.content?.[0]?.text?.trim() || '';
+  return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
 function localPipe(uid, senderNick, text, msgTime) {
