@@ -332,7 +332,11 @@ async function poll() {
       for (const msg of msgs) {
         // 纯 message_id 去重（文件锁，原子操作）
         const msgId = msg.message_id || msg.real_id || `${msg.time}_${msg.message_seq}`;
-        if (!tryLock(msgId)) continue;  // 处理过或正在处理 → 跳过
+        const locked = tryLock(msgId);
+        if (!msg.sender || Number(msg.sender.user_id) !== MY_ID) {
+          console.log(`  [lock] msgId=${msgId} locked=${locked} sender=${msg.sender?.user_id} time=${msg.time}`);
+        }
+        if (!locked) continue;  // 处理过或正在处理 → 跳过
 
         // 自己发的消息 → 记上下文后跳过
         if (Number(msg.sender?.user_id) === MY_ID) {
