@@ -12,7 +12,7 @@ const GROUPS = cfg.monitoredGroups || [];
 
 const NAPCAT = 'http://127.0.0.1:3000';
 const POLL_MS = 3000;
-const LOG_FILE = 'E:/CodeProject/qchat-cli/pending-messages.json';
+const LOG_FILE = './pending-messages.json';
 
 let lastCheckTime = Math.floor(Date.now() / 1000);
 

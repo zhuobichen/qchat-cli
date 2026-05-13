@@ -18,7 +18,7 @@ let friendLastSeq = {};
 let groupLastSeq = {};
 let friendContext = {};
 
-const IDENTITY_PATH = 'E:/CodeProject/qchat-cli/identity.md';
+const IDENTITY_PATH = './identity.md';
 let identityDoc = '';
 
 function loadIdentity() {

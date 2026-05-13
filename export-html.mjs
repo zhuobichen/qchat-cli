@@ -9,7 +9,7 @@ const BRIDGE = 'http://127.0.0.1:3001';
 if (!process.argv[2]) { console.log('用法: npx tsx export-html.mjs <QQ号> [chatType]'); process.exit(1); }
 const PEER_UID = process.argv[2];
 const CHAT_TYPE = parseInt(process.argv[3]) || 1;
-const OUT_DIR = 'E:/CodeProject/qchat-cli/output';
+const OUT_DIR = './output';
 const OUT_FILE = join(OUT_DIR, `full-history-${PEER_UID}.html`);
 
 async function fetchAllMessages(peerUid, chatType) {
