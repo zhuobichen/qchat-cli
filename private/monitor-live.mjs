@@ -114,7 +114,18 @@ async function poll() {
       friendLastSeq[uid] = Math.max(...msgs.map(m => m.message_seq));
 
       for (const msg of newMsgs) {
-        if (msg.sender?.user_id === MY_ID) continue;
+        if (msg.sender?.user_id === MY_ID) {
+          // 自己发的消息也记入上下文（保持对话连贯）
+          const myText = msg.message
+            .map(s => s.type === 'text' ? s.data.text : '')
+            .join('').trim();
+          if (myText) {
+            if (!friendContext[uid]) friendContext[uid] = [];
+            friendContext[uid].push({ sender: 'me', text: myText, time: msg.time || Date.now() });
+            if (friendContext[uid].length > 20) friendContext[uid].shift();
+          }
+          continue;
+        }
         const text = msg.message
           .map(s => s.type === 'text' ? s.data.text : '')
           .join('').trim();
@@ -123,11 +134,19 @@ async function poll() {
         const nick = msg.sender?.nickname || String(msg.sender?.user_id);
         console.log(`[${new Date().toLocaleTimeString()}] ${nick}: ${text.slice(0, 60)}`);
 
+        // 对方消息入上下文
+        if (!friendContext[uid]) friendContext[uid] = [];
+        friendContext[uid].push({ sender: nick, text, time: msg.time || Date.now() });
+        if (friendContext[uid].length > 20) friendContext[uid].shift();
+
         if (USE_CLOUD) {
           try {
             const reply = await cloudReply(uid, text);
             if (reply) {
               await sendMessage(uid, reply);
+              // 自己的回复也入上下文
+              friendContext[uid].push({ sender: 'me', text: reply, time: Date.now() });
+              if (friendContext[uid].length > 20) friendContext[uid].shift();
               console.log(`  → 已回复: ${reply.slice(0, 50)}`);
             }
           } catch (e) {
