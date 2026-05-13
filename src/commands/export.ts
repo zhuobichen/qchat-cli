@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { authManager } from '../core/auth.js';
 import { MessageFetcher } from '../core/fetcher.js';
 import { getExporter, getSupportedFormats } from '../core/exporter/index.js';
+import { resolveSession } from '../utils/resolveSession.js';
 
 export function exportCommand(program: Command): void {
   program
@@ -70,11 +71,7 @@ export function exportCommand(program: Command): void {
           console.log(chalk.bold(`导出完成: ${successCount} 成功, ${failCount} 失败`));
         } else {
           // 导出单个会话
-          const sessionId = parseInt(session);
-          if (isNaN(sessionId)) {
-            console.log(chalk.red('会话 ID 必须是数字'));
-            return;
-          }
+          const sessionId = await resolveSession(session);
 
           const sess = await fetcher.getSessionById(sessionId);
           if (!sess) {

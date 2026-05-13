@@ -158,4 +158,32 @@ npx tsx qzone-login.mjs              # 自动检测过期 → 重新扫码
 
 ---
 
+## Q10: `qce send msg` 需要交互确认，自动化受阻
+
+> 已合并到 Q5
+
+---
+
+## Q11: 自动回复双模式
+
+**背景**：`monitor-live.mjs` 有两种回复方式：
+
+| 模式 | 条件 | 机制 |
+|------|------|------|
+| 云端 API | 设置 `ANTHROPIC_API_KEY` | 直接调 Claude API，立即回复 |
+| 本地管道 | 未设 `ANTHROPIC_API_KEY` | 写入 `pending-messages.json`，由 Claude Code 读取并生成回复 |
+
+**本地管道工作流**：
+```
+monitor-live.mjs → 检测新消息 → pending-messages.json
+                                        ↓
+                              Claude Code 定时检查
+                                        ↓
+                     读取 identity.md → 生成回复 → 发送
+```
+
+**注意**：本地管道模式需要额外的 cron/定时脚本消费 `pending-messages.json`，否则消息只写入不处理。
+
+---
+
 *持续更新中...*

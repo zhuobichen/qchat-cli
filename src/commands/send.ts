@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { authManager } from '../core/auth.js';
 import { safetyManager } from '../core/safety.js';
+import { resolveSession } from '../utils/resolveSession.js';
 
 export function sendCommand(program: Command): void {
   const send = program
@@ -21,11 +22,7 @@ export function sendCommand(program: Command): void {
         return;
       }
 
-      const sessionId = parseInt(session);
-      if (isNaN(sessionId)) {
-        console.log(chalk.red('会话 ID 必须是数字'));
-        return;
-      }
+      const sessionId = await resolveSession(session);
 
       // 检查安全权限
       if (!safetyManager.isAllowed(sessionId)) {

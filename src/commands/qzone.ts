@@ -11,6 +11,27 @@ function getClient(): QZoneClient {
   return client;
 }
 
+/** 将昵称或 QQ 号解析为 UIN（纯数字直接返回，否则搜索 QZone 好友） */
+async function resolveQzoneUin(client: QZoneClient, input: string, fallbackToSelf = true): Promise<number> {
+  if (/^\d{5,}$/.test(input)) return parseInt(input);
+  try {
+    const friends = await client.getFriends();
+    const match = friends?.find((f: any) =>
+      (f.nick || f.name || '').includes(input)
+    );
+    if (match) {
+      console.log(chalk.gray(`  → ${match.nick || match.name} (${match.uin})`));
+      return match.uin;
+    }
+  } catch {}
+  if (fallbackToSelf) {
+    console.log(chalk.gray(`  → 使用自己 (${client.uin})`));
+    return client.uin;
+  }
+  console.log(chalk.red(`找不到 "${input}" 对应的 QZone 好友`));
+  process.exit(1);
+}
+
 export function qzoneCommand(program: Command): void {
   const qzone = program
     .command('qzone')

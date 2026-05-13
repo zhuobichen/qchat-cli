@@ -6,6 +6,7 @@ import { safetyManager } from '../core/safety.js';
 import { MessageMonitor } from '../core/monitor.js';
 import { Message } from '../core/onebot-client.js';
 import { configManager } from '../config/index.js';
+import { resolveSession } from '../utils/resolveSession.js';
 
 // AI 回复生成器（使用简单的模板，可以扩展为调用 AI API）
 async function generateReply(message: Message): Promise<string> {
@@ -43,11 +44,7 @@ export function monitorCommand(program: Command): void {
         return;
       }
 
-      const id = parseInt(sessionId);
-      if (isNaN(id)) {
-        console.log(chalk.red('会话 ID 必须是数字'));
-        return;
-      }
+      const id = await resolveSession(sessionId);
 
       // 检查安全权限
       if (!safetyManager.isAllowed(id)) {
