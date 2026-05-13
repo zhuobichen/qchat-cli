@@ -232,7 +232,7 @@ async function preloadHistory(uid) {
             'Authorization': `Bearer ${DS_API_KEY}`,
           },
           body: JSON.stringify({
-            model: 'deepseek-v4-pro',
+            model: 'deepseek-flash',
             messages: [{
               role: 'user',
               content: `请将以下两个人的QQ聊天历史压缩为一个简洁摘要。保留：关键话题、重要事件、对方的性格偏好、我们之间的称呼。控制在300字以内。\n\n${historyText}`,
@@ -299,7 +299,7 @@ ${buildContextBlock(uid)}
       'Authorization': `Bearer ${DS_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-flash',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 2000,
     }),
