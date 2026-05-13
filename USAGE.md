@@ -108,11 +108,18 @@ npx tsx private/qzone-ops.mjs like <名称>     # 检查 + 补赞
 npx tsx private/qzone-ops.mjs export <名称>   # HTML 导出（含评论）
 
 # 消息监听
-npx tsx private/monitor-live.mjs              # 实时监听 + 人格回复
+npx tsx monitor-live.mjs                      # 实时监听（推荐，自动读 config.json）
 npx tsx private/monitor-notify.mjs            # 轻量监听 → pending-messages.json
 ```
 
-`monitor-live.mjs` 依赖 `identity.md`（人格文档）和 `ANTHROPIC_API_KEY` 环境变量。
+**监听启动方式：**
+
+| 方式 | 命令 |
+|------|------|
+| 有 `config.example.json` → `config.json` | `npx tsx monitor-live.mjs` |
+| 无配置文件 | `npx tsx monitor-live.mjs --myqq <QQ> --friends <QQ,QQ>` |
+| 云端自动回复 | 加上 `--api-key sk-xxx`，模型 deepseek-v4-pro |
+| 本地管道回复 | 不传 `--api-key`，消息写入 `pending-messages.json` 待 Claude Code 消费 |
 
 ## A.5 典型工作流
 
@@ -230,7 +237,8 @@ npx tsx qzone-login.mjs
 
 | 目录/文件 | 是否提交 | 说明 |
 |-----------|----------|------|
-| `private/config.example.json` | ✅ 提交 | 配置模板（无真实数据） |
+| `config.example.json` | ✅ 提交 | 监控配置模板（根目录） |
+| `private/config.example.json` | ✅ 提交 | 配置模板（同根目录版本） |
 | `private/config.json` | ❌ gitignore | 真实配置（含 QQ 号） |
 | `private/*.mjs` | ✅ 提交 | 隐私脚本（无硬编码 QQ 号） |
 | `.qzone-cookie` | ❌ gitignore | QZone 登录缓存 |
@@ -258,8 +266,9 @@ qchat-cli/
 │   ├── config.json               # 真实配置（gitignore）
 │   ├── load-config.mjs           # 配置加载器
 │   ├── qzone-ops.mjs             # QZone 运维（feeds/check/like/export）
-│   ├── monitor-live.mjs          # 实时监听 + 人格回复
+│   ├── monitor-live.mjs          # 实时监听 + 人格回复（公共入口）
 │   ├── monitor-notify.mjs        # 轻量监听 → pending-messages
+│   ├── config.example.json       # 监听配置模板
 │   └── README.md                 # 隐私目录说明
 ├── identity.md                   # AI 人格文档
 ├── *.mjs                         # 通用脚本（无隐私信息）

@@ -100,20 +100,21 @@ qce qzone feeds <QQ号>                   # 查看说说
 | `npx tsx export-html.mjs <QQ号>` | 完整聊天历史 → HTML（图片内嵌） |
 | `npx tsx export-full-history.mjs <QQ号>` | 完整聊天历史 → Markdown |
 | `npx tsx export-qzone-feeds.mjs [QQ号]` | 导出 QZone 说说+评论为 HTML |
+| `npx tsx monitor-live.mjs` | 实时监听+人格回复（自动读 config.json） |
 | `npx tsx qzone-login.mjs` | QZone 独立扫码登录 |
 
 ### Scripts (隐私操作 · `private/`)
 
 带 QQ 号等私密信息的脚本放在 `private/` 目录，**不提交 Git**。
 
-使用前先配置：`cp private/config.example.json private/config.json`
+使用前先配置：`cp config.example.json config.json`（或 `private/config.example.json` → `private/config.json`）
 
 | 脚本 | 用途 |
 |------|------|
 | `npx tsx private/qzone-ops.mjs export <名>` | QZone 说说+评论导出 |
 | `npx tsx private/qzone-ops.mjs check <名>` | 检查点赞状态 |
 | `npx tsx private/qzone-ops.mjs like <名>` | 检查+补赞 |
-| `npx tsx private/monitor-live.mjs` | 实时监听+人格回复 |
+| `npx tsx monitor-live.mjs` | 实时监听+人格回复（自动读 config.json） |
 | `npx tsx private/monitor-notify.mjs` | 轻量监听→pending-messages |
 
 ---
