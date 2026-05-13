@@ -202,9 +202,6 @@ async function preloadHistory(uid) {
     for (const msg of allMsgs) {
       tryLock(msg.msgId || `${msg.msgTime}_${msg.msgSeq}`);
     }
-    // 设置时间戳边界（兜底：防止 OneBot/qce-bridge ID 格式不一致导致的重复）
-    const times = allMsgs.map(m => m.msgTime || 0).filter(Boolean);
-    if (times.length > 0) friendLastTime[uid] = Math.max(...times);
     // ── AI 压缩历史为摘要（只生成一次，存文件复用） ──
     const summaryFile = join(MEMORY_DIR, `${uid}_summary.txt`);
     if (existsSync(summaryFile)) {
