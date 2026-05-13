@@ -318,16 +318,28 @@ ${buildContextBlock(uid)}
   return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
-// ═══ 本地管道：写入 pending-messages.json ═══
+// ═══ 本地管道：写入 pending-messages.json（含完整上下文） ═══
 function localPipe(uid, senderNick, text, msgTime) {
+  const identity = loadIdentity();
+  const memory = loadMemory(uid);
+  const memoryRecent = memory.slice(-5);  // 最近 5 条记忆
+
   let pending = [];
   try { pending = JSON.parse(readFileSync(PENDING_FILE, 'utf-8')); } catch {}
+
   pending.push({
     peerUid: String(uid),
     senderNick: senderNick || String(uid),
     text,
     time: msgTime || Math.floor(Date.now() / 1000),
     receivedAt: new Date().toISOString(),
+    // 完整上下文（与云端模式一致）
+    context: {
+      identity,
+      memory: memoryRecent,
+      historySummary: friendContextSummary[uid] || [],
+      recentMessages: (friendContext[uid] || []).map(c => ({ sender: c.sender, text: c.text })),
+    },
   });
   writeFileSync(PENDING_FILE, JSON.stringify(pending, null, 2));
 }
