@@ -94,7 +94,6 @@ const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages
 const DS_API_KEY = cfg.deepseekApiKey || '';
 const DS_BASE = 'https://api.deepseek.com';
 
-let friendLastTime = {};       // 预加载后的初始时间戳边界
 let friendContext = {};        // 最近原始消息
 let friendContextSummary = {}; // 更早对话的压缩摘要
 
@@ -333,29 +332,12 @@ async function poll() {
       const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 5 });
       if (!msgs || msgs.length === 0) continue;
 
-      // 双重过滤：message_id 锁 + 时间戳边界
-      const lastTime = friendLastTime[uid] || 0;
-      const msgTimes = msgs.map(m => m.time);
-      console.log(`  [poll uid=${uid}] lastTime=${lastTime} msgTimes=[${msgTimes.slice(0,5).join(',')}]`);
-      const newMsgs = msgs.filter(m => {
-        if (m.time <= lastTime) return false;
-        const lockId = m.message_id || m.real_id || `${m.time}_${m.message_seq}`;
-        return tryLock(lockId);
-      });
-      if (newMsgs.length > 0) console.log(`  [poll uid=${uid}] newMsgs=${newMsgs.length} firstTime=${newMsgs[0]?.time}`);
-      if (msgs.length > 0) {
-        // 只用非自己发的消息更新时间边界（防止 AI 回复推高边界，导致对方新消息被过滤）
-        const otherTimes = msgs.filter(m => Number(m.sender?.user_id) !== MY_ID).map(m => m.time || 0);
-        if (otherTimes.length > 0) {
-          const maxTime = Math.max(...otherTimes);
-          if (maxTime > lastTime) friendLastTime[uid] = maxTime;
-        }
-      }
-
-      for (const msg of newMsgs) {
+      for (const msg of msgs) {
+        // 纯 message_id 去重（文件锁，原子操作）
         const msgId = msg.message_id || msg.real_id || `${msg.time}_${msg.message_seq}`;
-        console.log(`  [debug msg] senderUid=${msg.sender?.user_id} (type=${typeof msg.sender?.user_id}) MY_ID=${MY_ID} time=${msg.time}`);
+        if (!tryLock(msgId)) continue;  // 处理过或正在处理 → 跳过
 
+        // 自己发的消息 → 记上下文后跳过
         if (Number(msg.sender?.user_id) === MY_ID) {
           const myText = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
           if (myText) addContext(uid, 'me', myText, msg.time);
@@ -370,7 +352,8 @@ async function poll() {
 
         addContext(uid, nick, text, msg.time);
 
-        const alreadyReplied = newMsgs.some(m =>
+        // 检查是否已被手动回复
+        const alreadyReplied = msgs.some(m =>
           Number(m.sender?.user_id) === MY_ID && m.time >= msg.time
         );
         if (alreadyReplied) {
