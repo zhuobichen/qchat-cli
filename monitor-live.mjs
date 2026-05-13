@@ -303,7 +303,7 @@ ${buildContextBlock(uid)}
       'Authorization': `Bearer ${DS_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-flash',
+      model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 2000,
     }),
