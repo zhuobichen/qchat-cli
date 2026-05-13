@@ -14,6 +14,7 @@ const cfg = loadConfig();
 const MY_ID = cfg.myQQ;
 const FRIENDS = cfg.monitoredFriends || [];
 const GROUPS = cfg.monitoredGroups || [];
+const REPLY_WHITELIST = new Set(cfg.replyWhitelist || []);  // 必须显式设置，为空则不回复
 
 const NAPCAT = 'http://127.0.0.1:3000';
 const POLL_MS = 3000;
@@ -138,6 +139,12 @@ async function poll() {
         if (!friendContext[uid]) friendContext[uid] = [];
         friendContext[uid].push({ sender: nick, text, time: msg.time || Date.now() });
         if (friendContext[uid].length > 20) friendContext[uid].shift();
+
+        const canReply = REPLY_WHITELIST.has(uid);
+        if (!canReply) {
+          console.log(`  ⚠ ${nick} 不在回复白名单，仅监听`);
+          continue;
+        }
 
         if (USE_CLOUD) {
           try {
