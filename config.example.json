@@ -6,5 +6,7 @@
   "qzoneTargets": {},
   "deepseekApiKey": "",
   "maxRawContext": 20,
+  "maxReplyLength": 100,
+  "maxContextMsgLength": 100,
   "identityFile": "identity.md"
 }

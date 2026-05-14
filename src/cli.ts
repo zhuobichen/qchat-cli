@@ -8,6 +8,7 @@ import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
 import { qzoneCommand } from './commands/qzone.js';
+import { napcatCommand } from './commands/napcat.js';
 
 const program = new Command();
 
@@ -24,5 +25,6 @@ backupCommand(program);
 sendCommand(program);
 monitorCommand(program);
 qzoneCommand(program);
+napcatCommand(program);
 
 program.parse();
