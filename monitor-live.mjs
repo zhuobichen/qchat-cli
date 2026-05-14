@@ -195,6 +195,8 @@ cleanOldLocks();
 
 // 预加载后设的时间边界：只处理比预加载消息更新的消息
 let friendMaxTime = {};
+// 本地管道模式内存去重：同一消息 ID 不重复写入 pending
+const pipedMsgIds = new Set();
 
 const USE_CLOUD = !!cfg.deepseekApiKey;
 const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages.json → Claude Code)';
@@ -484,8 +486,8 @@ async function poll() {
 
         addContext(uid, nick, text, msg.time);
 
-        // 时间边界：跳过预加载范围内的旧消息（maxTime 由预加载返回）
-        if (msg.time <= (friendMaxTime[uid] || 0)) {
+        // 时间边界：用 < 而非 <=，避免跳过与最后一条历史消息时间戳相同的新消息
+        if (msg.time < (friendMaxTime[uid] || 0)) {
           console.log(`  ⏭ 历史消息，跳过`);
           continue;
         }

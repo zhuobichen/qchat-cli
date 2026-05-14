@@ -2,7 +2,7 @@
  * 轻量监听 → pending-messages.json
  * 用法: npx tsx private/monitor-notify.mjs
  */
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync } from 'fs';
 import { loadConfig } from './load-config.mjs';
 
 const cfg = loadConfig();
