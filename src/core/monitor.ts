@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { OneBotClient, Message } from './onebot-client.js';
 import { safetyManager } from './safety.js';
+import { logger } from '../utils/index.js';
 
 export interface MonitorConfig {
   sessionId: number;
@@ -19,9 +20,11 @@ export class MessageMonitor {
   private ws: WebSocket | null = null;
   private monitoredSessions: Set<number> = new Set();
   private lastMessageSeq: Map<number, number> = new Map();
+  private processedMessageIds: Set<number> = new Set();  // 已处理的消息 ID，防止重复
   private pollingInterval: NodeJS.Timeout | null = null;
   private replyCallback: ((message: Message) => Promise<string>) | null = null;
   private _selfId: number | null = null;
+  private isProcessing: Map<number, boolean> = new Map();  // 防止并发处理同一会话
 
   constructor(client: OneBotClient) {
     this.client = client;
@@ -76,12 +79,15 @@ export class MessageMonitor {
     console.log(chalk.dim('按 Ctrl+C 停止'));
     console.log('');
 
-    // 初始化最后消息序号
+    // 初始化最后消息 ID
     for (const sessionId of this.monitoredSessions) {
       try {
         const result = await this.client.getFriendMsgHistory(sessionId, undefined, 1);
         if (result.messages.length > 0) {
-          this.lastMessageSeq.set(sessionId, result.messages[0].message_seq);
+          const lastMsgId = result.messages[0].message_id;
+          this.lastMessageSeq.set(sessionId, lastMsgId);
+          this.processedMessageIds.add(lastMsgId);  // 避免重复处理最新一条
+          console.log(chalk.dim(`  会话 ${sessionId} 初始化完成，最后消息 ID: ${lastMsgId}`));
         }
       } catch (error) {
         console.log(chalk.yellow(`初始化会话 ${sessionId} 失败: ${error}`));
@@ -110,37 +116,75 @@ export class MessageMonitor {
    */
   private async checkNewMessages() {
     for (const sessionId of this.monitoredSessions) {
-      try {
-        const lastSeq = this.lastMessageSeq.get(sessionId);
-        const result = await this.client.getFriendMsgHistory(sessionId, lastSeq, 10);
-
-        if (result.messages.length === 0) continue;
-
-        // 按时间排序（从旧到新）
-        const messages = result.messages.sort((a, b) => a.message_seq - b.message_seq);
-
-        for (const msg of messages) {
-          // 跳过已处理的消息
-          if (lastSeq && msg.message_seq <= lastSeq) continue;
-
-          // 跳过自己发的消息
-          const myId = await this.getSelfId();
-          if (myId && msg.user_id === myId) continue;
-
-          // 显示消息
-          this.displayMessage(msg);
-
-          // 自动回复
-          if (this.replyCallback && safetyManager.isAllowed(sessionId)) {
-            await this.autoReply(sessionId, msg);
-          }
-
-          // 更新最后消息序号
-          this.lastMessageSeq.set(sessionId, msg.message_seq);
-        }
-      } catch (error) {
-        // 忽略轮询错误
+      // 防止并发处理同一会话
+      if (this.isProcessing.get(sessionId)) {
+        continue;
       }
+
+      try {
+        this.isProcessing.set(sessionId, true);
+        await this.checkNewMessagesForSession(sessionId);
+      } catch (error) {
+        console.log(chalk.red(`检查新消息失败: ${error}`));
+      } finally {
+        this.isProcessing.set(sessionId, false);
+      }
+    }
+  }
+
+  /**
+   * 检查单个会话的新消息
+   */
+  private async checkNewMessagesForSession(sessionId: number) {
+    const result = await this.client.getFriendMsgHistory(sessionId, undefined, 30);
+
+    if (result.messages.length === 0) return;
+
+    // 按 message_id 从小到大排序（消息 ID 是递增的，更可靠）
+    const messages = result.messages.sort((a, b) => a.message_id - b.message_id);
+
+    // 获取之前已知的最大 message_id
+    const previousMaxId = this.lastMessageSeq.get(sessionId) || 0;
+    const myId = await this.getSelfId();
+
+    for (const msg of messages) {
+      // 跳过已处理过的消息 ID（主要去重机制）
+      if (this.processedMessageIds.has(msg.message_id)) {
+        continue;
+      }
+
+      // 跳过历史消息（基于 message_id）
+      if (msg.message_id <= previousMaxId) {
+        continue;
+      }
+
+      // 跳过自己发的消息
+      if (myId && msg.user_id === myId) {
+        continue;
+      }
+
+      // 显示消息
+      this.displayMessage(msg);
+
+      // 自动回复
+      if (this.replyCallback && safetyManager.isAllowed(sessionId)) {
+        await this.autoReply(sessionId, msg);
+      }
+
+      // 标记为已处理
+      this.processedMessageIds.add(msg.message_id);
+
+      // 限制已处理消息 ID 集合大小，防止内存泄漏
+      if (this.processedMessageIds.size > 1000) {
+        const idsToDelete = Array.from(this.processedMessageIds).slice(0, 500);
+        idsToDelete.forEach(id => this.processedMessageIds.delete(id));
+      }
+    }
+
+    // 更新最后处理序号（使用最大的 message_id）
+    const currentMaxId = Math.max(...messages.map(m => m.message_id));
+    if (currentMaxId > previousMaxId) {
+      this.lastMessageSeq.set(sessionId, currentMaxId);
     }
   }
 
@@ -181,27 +225,9 @@ export class MessageMonitor {
 
       if (!replyText) return;
 
-      // 发送回复
-      const config = this.client.getConfig();
-      const response = await fetch(`http://${config.host}:${config.port}/send_msg`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.token ? { 'Authorization': `Bearer ${config.token}` } : {}),
-        },
-        body: JSON.stringify({
-          message_type: 'private',
-          user_id: sessionId,
-          message: [{ type: 'text', data: { text: replyText } }],
-        }),
-      });
-
-      const result = await response.json();
-      if (result.status === 'ok') {
-        console.log(chalk.green(`[自动回复] ${replyText}`));
-      } else {
-        console.log(chalk.red(`回复失败: ${result.message}`));
-      }
+      // 发送回复（使用封装好的 API）
+      await this.client.sendPrivateMessage(sessionId, replyText);
+      console.log(chalk.green(`[自动回复] ${replyText}`));
     } catch (error) {
       console.log(chalk.red(`回复失败: ${error}`));
     }

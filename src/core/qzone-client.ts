@@ -5,14 +5,16 @@
  * 认证：独立 QZone 网页扫码登录（与 NapCat 内部会话无关）
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
+import { fetchWithTimeout, retry, logger } from '../utils/index.js';
 
 // ── Constants ──
 const BASE_URL = 'https://user.qzone.qq.com';
 const H5_BASE = 'https://h5.qzone.qq.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 const COOKIE_FILE = join(import.meta.dirname, '..', '..', '.qzone-cookie');
+const MAX_COMMENTS_LOOP = 100; // 获取评论的最大循环次数，防止无限循环
 
 // ── URLS (from qzone-go urls.go) ──
 const URLS = {
@@ -94,6 +96,41 @@ function computeGTK(key: string, hash: number = 5381): number {
   }
   return hash & 0x7FFFFFFF;
 }
+/** 从响应中提取所有 Cookie */
+function extractCookiesFromResponse(res: Response): string[] {
+  let cookies: string[] = [];
+
+  // 优先使用 getSetCookie() (Node 18+)
+  if (typeof res.headers.getSetCookie === 'function') {
+    cookies = res.headers.getSetCookie();
+  } else {
+    // 回退到旧方式
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      // 多个 Set-Cookie 头通常是逗号分隔的，但需要小心处理
+      // 简单地按逗号分开可能会出错，但这是我们能做的最好的回退
+      cookies = [setCookie];
+    }
+  }
+
+  return cookies;
+}
+
+/** 从响应中构建 Cookie 字符串 */
+function buildCookieString(res: Response): string {
+  const cookies = extractCookiesFromResponse(res);
+  let cookieStr = '';
+
+  for (const cookie of cookies) {
+    const firstSemicolon = cookie.indexOf(';');
+    const keyValue = firstSemicolon > 0 ? cookie.slice(0, firstSemicolon) : cookie;
+    if (keyValue.includes('=')) {
+      cookieStr += keyValue + '; ';
+    }
+  }
+
+  return cookieStr;
+}
 
 /**
  * 解析 QQ 空间的 JSONP / JSON / 非标准 JSON 响应
@@ -153,9 +190,15 @@ export interface QRResult {
 
 /** 获取 QZone 登录二维码 */
 export async function getQRCode(): Promise<QRResult> {
-  const res = await fetch(QR_SHOW, { redirect: 'manual' });
-  const setCookie = res.headers.get('set-cookie') || '';
-  const qrsig = setCookie.match(/qrsig=([^;]+)/)?.[1] || '';
+  const res = await fetchWithTimeout(QR_SHOW, { redirect: 'manual' });
+  const cookies = extractCookiesFromResponse(res);
+  let qrsig = '';
+  for (const cookie of cookies) {
+    if (cookie.startsWith('qrsig=')) {
+      qrsig = cookie.slice('qrsig='.length).split(';')[0];
+      break;
+    }
+  }
   if (!qrsig) throw new Error('qrsig not found');
 
   const buf = Buffer.from(await res.arrayBuffer());
@@ -174,22 +217,13 @@ export enum LoginState {
 /** 轮询登录状态 */
 export async function pollQRLogin(qr: QRResult): Promise<{ state: LoginState; cookie?: string }> {
   const url = QR_LOGIN.replace('%s', qr.ptqrtoken);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Cookie: `qrsig=${qr.qrsig}` },
     redirect: 'manual',
   });
 
   // Collect cookies from response
-  let ptCookie = '';
-  const setCookies = (typeof res.headers.getSetCookie === 'function')
-    ? res.headers.getSetCookie()
-    : (res.headers.get('set-cookie') || '').split('\n');
-  for (const c of setCookies) {
-    const kv = c.split(';')[0]?.split('=');
-    if (kv && kv.length >= 2 && kv[1]) {
-      ptCookie += `${kv[0]}=${kv[1]}; `;
-    }
-  }
+  const ptCookie = buildCookieString(res);
 
   const text = await res.text();
 
@@ -211,17 +245,8 @@ export async function pollQRLogin(qr: QRResult): Promise<{ state: LoginState; co
     if (!uin || !ptsigx) return { state: LoginState.Error };
 
     // Check sig
-    const sigRes = await fetch(CHECK_SIG.replace('%s', uin).replace('%s', ptsigx), { redirect: 'manual' });
-    let redirectCookie = '';
-    const sigCookies = (typeof sigRes.headers.getSetCookie === 'function')
-      ? sigRes.headers.getSetCookie()
-      : (sigRes.headers.get('set-cookie') || '').split('\n');
-    for (const c of sigCookies) {
-      const kv = c.split(';')[0]?.split('=');
-      if (kv && kv.length >= 2 && kv[1]) {
-        redirectCookie += `${kv[0]}=${kv[1]}; `;
-      }
-    }
+    const sigRes = await fetchWithTimeout(CHECK_SIG.replace('%s', uin).replace('%s', ptsigx), { redirect: 'manual' });
+    const redirectCookie = buildCookieString(sigRes);
 
     const fullCookie = ptCookie + redirectCookie;
     return { state: LoginState.Success, cookie: fullCookie };
@@ -281,7 +306,11 @@ export class QZoneClient {
   /** 清除登录状态 */
   clearCookie(): void {
     this.session = null;
-    try { if (existsSync(COOKIE_FILE)) { writeFileSync(COOKIE_FILE, ''); } } catch {}
+    try {
+      if (existsSync(COOKIE_FILE)) {
+        unlinkSync(COOKIE_FILE);
+      }
+    } catch {}
   }
 
   /** 执行完整扫码登录流程 */
@@ -344,14 +373,16 @@ export class QZoneClient {
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
     }
 
-    const res = await fetch(u.toString(), opts);
-    const text = await res.text();
-    const parsed = parseJSONP(text);
+    return retry(async () => {
+      const res = await fetchWithTimeout(u.toString(), opts);
+      const text = await res.text();
+      const parsed = parseJSONP(text);
 
-    if (!parsed || parsed.code === -3000) {
-      throw new Error('Session expired');
-    }
-    return parsed;
+      if (!parsed || parsed.code === -3000) {
+        throw new Error('Session expired');
+      }
+      return parsed;
+    });
   }
 
   // ══════════════════════════════════════
@@ -553,7 +584,14 @@ export class QZoneClient {
   async getAllMessageComments(uin: number, tid: string) {
     const all: any[] = [];
     let pos = 0;
+    let loopCount = 0;
     while (true) {
+      loopCount++;
+      // 防止无限循环
+      if (loopCount > MAX_COMMENTS_LOOP) {
+        console.warn(`getAllMessageComments 已达到最大循环次数 ${MAX_COMMENTS_LOOP}，停止获取`);
+        break;
+      }
       const comments = await this.getMessageComments(uin, tid, pos, 50);
       if (!comments || comments.length === 0) break;
       all.push(...comments);

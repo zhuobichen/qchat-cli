@@ -9,6 +9,8 @@ import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
 import { qzoneCommand } from './commands/qzone.js';
 import { napcatCommand } from './commands/napcat.js';
+import { adminCommand } from './commands/admin.js';
+import { wsMonitorCommand } from './commands/ws-monitor.js';
 
 const program = new Command();
 
@@ -26,5 +28,7 @@ sendCommand(program);
 monitorCommand(program);
 qzoneCommand(program);
 napcatCommand(program);
+adminCommand(program);
+wsMonitorCommand(program);
 
 program.parse();

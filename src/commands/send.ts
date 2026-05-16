@@ -49,27 +49,8 @@ export function sendCommand(program: Command): void {
       // 发送消息
       try {
         const client = authManager.getClient();
-        // 这里需要调用发送消息的 API
-        // NapCatQQ OneBot API: send_msg
-        const response = await fetch(`http://${authManager.getConfig().host}:${authManager.getConfig().port}/send_msg`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(authManager.getConfig().token ? { 'Authorization': `Bearer ${authManager.getConfig().token}` } : {}),
-          },
-          body: JSON.stringify({
-            message_type: 'private',
-            user_id: sessionId,
-            message: [{ type: 'text', data: { text: message } }],
-          }),
-        });
-
-        const result = await response.json();
-        if (result.status === 'ok') {
-          console.log(chalk.green('消息已发送'));
-        } else {
-          console.log(chalk.red('发送失败:'), result.message || result.wording);
-        }
+        await client.sendPrivateMessage(sessionId, message);
+        console.log(chalk.green('消息已发送'));
       } catch (error) {
         console.log(chalk.red('发送失败:'), error);
       }
