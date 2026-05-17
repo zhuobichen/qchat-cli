@@ -178,6 +178,8 @@ function parseCookie(cookieStr: string): { uin: number; skey: string; p_skey: st
     if (name === 'skey') skey = val;
     if (name === 'p_skey') p_skey = val;
   }
+  // 现代 QQ 登录可能不返回 p_skey，用 skey 兜底
+  if (!p_skey && skey) p_skey = skey;
   return { uin, skey, p_skey };
 }
 
@@ -246,9 +248,20 @@ export async function pollQRLogin(qr: QRResult): Promise<{ state: LoginState; co
 
     // Check sig
     const sigRes = await fetchWithTimeout(CHECK_SIG.replace('%s', uin).replace('%s', ptsigx), { redirect: 'manual' });
-    const redirectCookie = buildCookieString(sigRes);
+    const sigCookie = buildCookieString(sigRes);
 
-    const fullCookie = ptCookie + redirectCookie;
+    // 访问 QZone 主页获取更多 cookie
+    let qzoneCookie = '';
+    try {
+      const combinedCookie = ptCookie + ';' + sigCookie;
+      const mainRes = await fetchWithTimeout(`https://user.qzone.qq.com/${uin}`, {
+        headers: { Cookie: combinedCookie },
+        redirect: 'follow',
+      });
+      qzoneCookie = buildCookieString(mainRes);
+    } catch {}
+
+    const fullCookie = ptCookie + ';' + sigCookie + ';' + qzoneCookie;
     return { state: LoginState.Success, cookie: fullCookie };
   }
 
@@ -318,16 +331,27 @@ export class QZoneClient {
     const qr = await getQRCode();
     const qrPath = join(import.meta.dirname, '..', '..', 'qzone-qrcode.png');
     writeFileSync(qrPath, qr.image);
-    console.log(`\n二维码已保存: ${qrPath}`);
-    console.log('请用手机 QQ 扫码...');
+    console.log(`\n二维码已弹出，请用手机 QQ 扫码...`);
+
+    // 自动弹出二维码图片
+    try {
+      const { spawn } = await import('child_process');
+      spawn('cmd', ['/c', 'start', '', qrPath], { stdio: 'ignore', detached: true }).unref();
+    } catch {}
 
     return new Promise((resolve, reject) => {
       let attempts = 0;
+      let lastState = 'waiting';
       const timer = setInterval(async () => {
         attempts++;
-        if (attempts > 120) { clearInterval(timer); reject(new Error('登录超时')); return; }
+        if (attempts > 180) { clearInterval(timer); reject(new Error('登录超时（3分钟）')); return; }
         try {
           const result = await pollQRLogin(qr);
+          if (result.state !== lastState) {
+            lastState = result.state;
+            if (result.state === 'scanned') console.log('  已扫码，请在手机上确认...');
+            else if (result.state !== 'waiting') console.log(`  ${result.state}`);
+          }
           if (result.state === LoginState.Success && result.cookie) {
             clearInterval(timer);
             this.initFromCookie(result.cookie);
@@ -337,13 +361,11 @@ export class QZoneClient {
           } else if (result.state === LoginState.Expired) {
             clearInterval(timer);
             reject(new Error('二维码已过期'));
-          } else if (result.state === LoginState.Scanned) {
-            if (attempts % 5 === 1) console.log('  已扫码，请确认...');
           }
         } catch (e) {
-          if (attempts > 120) { clearInterval(timer); reject(e); }
+          if (attempts > 180) { clearInterval(timer); reject(e); }
         }
-      }, 2000);
+      }, 1000);
     });
   }
 

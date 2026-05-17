@@ -7,8 +7,9 @@ pending-messages.json
 monitor-state.json
 .DS_Store
 .qzone-cookie
-qzone-qrcode.png
+qzone-qrcode*.png
 private/config.json
 private/memory/
 private/locks/
+private/profiles/
 private/DEBUG-LOG.md

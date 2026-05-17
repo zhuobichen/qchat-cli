@@ -12,6 +12,7 @@ import { napcatCommand } from './commands/napcat.js';
 import { adminCommand } from './commands/admin.js';
 import { wsMonitorCommand } from './commands/ws-monitor.js';
 import { setupCommand } from './commands/setup.js';
+import { profileCommand } from './commands/profile.js';
 
 const program = new Command();
 
@@ -32,5 +33,6 @@ napcatCommand(program);
 adminCommand(program);
 wsMonitorCommand(program);
 setupCommand(program);
+profileCommand(program);
 
 program.parse();

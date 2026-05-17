@@ -118,6 +118,7 @@ const IDENTITY_PATH = join(__dirname, cfg.identityFile || 'identity.md');
 const PENDING_FILE = join(__dirname, 'pending-messages.json');
 const MEMORY_DIR = join(__dirname, 'private', 'memory');
 const LOCK_DIR = join(__dirname, 'private', 'locks');
+const PROFILES_DIR = join(__dirname, 'private', 'profiles');
 
 // 确保目录存在
 if (!existsSync(MEMORY_DIR)) {
@@ -125,6 +126,9 @@ if (!existsSync(MEMORY_DIR)) {
 }
 if (!existsSync(LOCK_DIR)) {
   mkdirSync(LOCK_DIR, { recursive: true });
+}
+if (!existsSync(PROFILES_DIR)) {
+  mkdirSync(PROFILES_DIR, { recursive: true });
 }
 
 // ═══ 工具函数 ═══
@@ -247,6 +251,17 @@ function buildContextBlock(uid) {
 function loadIdentity() {
   try { return readFileSync(IDENTITY_PATH, 'utf-8'); }
   catch { return '你是一个友好的AI助手。'; }
+}
+
+/** 加载用户画像（如果存在） */
+function loadProfile(uid) {
+  const profileFile = join(PROFILES_DIR, `${uid}.md`);
+  try {
+    if (existsSync(profileFile)) {
+      return readFileSync(profileFile, 'utf-8');
+    }
+  } catch {}
+  return '';
 }
 
 // ═══ 记忆存储 ═══
@@ -402,10 +417,13 @@ async function cloudReply(uid, text) {
     }
   }
 
+  const profile = loadProfile(uid);
+  const profileBlock = profile ? `\n\n对方画像：\n${profile}` : '';
+
   const prompt = `你是以下身份人格。请对以下消息生成回复（符合人格风格，无需限制长度）。
 
 身份人格：
-${identity}${memoryBlock}
+${identity}${profileBlock}${memoryBlock}
 ${buildContextBlock(uid)}
 
 请只输出回复内容，不要附加任何解释。`;
@@ -451,6 +469,7 @@ function localPipe(uid, senderNick, text, msgTime, msgId) {
     context: {
       maxReplyLength: MAX_REPLY_LENGTH,
       identity,
+      profile: loadProfile(uid),
       memory: memoryRecent,
       historySummary: friendContextSummary[uid] || [],
       recentMessages: (friendContext[uid] || []).map(c => ({ sender: c.sender, text: c.text })),
