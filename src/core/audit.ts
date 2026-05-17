@@ -75,7 +75,7 @@ export class AuditLogger {
    * 记录警告（危险操作）
    */
   warn(action: string, target: string | number, details?: Record<string, any>): void {
-    this.log({ action, target, operator: 'system', success: true, details, details: { ...details, _warning: true } });
+    this.log({ action, target, operator: 'system', success: true, details: { ...details, _warning: true } });
   }
 
   /**

@@ -28,7 +28,7 @@ function formatMessage(event: OneBotEvent): string {
 
   const rawMessage = event.raw_message || 
     (Array.isArray(event.message) 
-      ? event.message.map(m => m.type === 'text' ? m.data.text : `[${m.type}]`).join('')
+      ? event.message.map((m: { type: string; data: { text?: string } }) => m.type === 'text' ? m.data.text ?? '' : `[${m.type}]`).join('')
       : String(event.message));
 
   return `[${time}] ${target} | ${sender}: ${rawMessage}`;
@@ -70,7 +70,7 @@ export function wsMonitorCommand(program: Command): void {
         console.log(chalk.green(`已登录: ${loginInfo.nickname} (${loginInfo.user_id})`));
 
         // 监控消息
-        const sessionSet = new Set(sessions.map(s => parseInt(s)));
+        const sessionSet = new Set(sessions.map((s: string) => parseInt(s)));
 
         // 私聊消息
         client.on('message_private', (event: OneBotEvent) => {

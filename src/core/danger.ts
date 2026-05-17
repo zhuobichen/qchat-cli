@@ -126,7 +126,7 @@ export class DangerGuard {
 
     // 严重操作需要输入目标确认
     if (operation.severity === 'critical') {
-      const { confirm, targetConfirm } = await inquirer.prompt([
+      const { confirm, targetConfirm } = await inquirer.prompt<{ confirm: boolean; targetConfirm?: string }>([
         {
           type: 'confirm',
           name: 'confirm',
@@ -137,8 +137,8 @@ export class DangerGuard {
           type: 'input',
           name: 'targetConfirm',
           message: `请再次输入目标 ID "${target}" 确认：`,
-          when: (answers) => answers.confirm,
-          validate: (input) => {
+          when: (answers: { confirm: boolean }) => answers.confirm,
+          validate: (input: string) => {
             return input === String(target) || input === target;
           },
         },

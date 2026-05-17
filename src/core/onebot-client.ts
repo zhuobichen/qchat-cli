@@ -748,7 +748,9 @@ export class OneBotClient {
     }
 
     if (data.echo !== undefined && this.pendingRequests.has(data.echo)) {
-      const { resolve, reject } = this.pendingRequests.get(data.echo);
+      const pending = this.pendingRequests.get(data.echo);
+      if (!pending) return;
+      const { resolve, reject } = pending;
       this.pendingRequests.delete(data.echo);
       if (data.status === 'ok') {
         resolve(data.data);
