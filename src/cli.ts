@@ -11,6 +11,7 @@ import { qzoneCommand } from './commands/qzone.js';
 import { napcatCommand } from './commands/napcat.js';
 import { adminCommand } from './commands/admin.js';
 import { wsMonitorCommand } from './commands/ws-monitor.js';
+import { setupCommand } from './commands/setup.js';
 
 const program = new Command();
 
@@ -30,5 +31,6 @@ qzoneCommand(program);
 napcatCommand(program);
 adminCommand(program);
 wsMonitorCommand(program);
+setupCommand(program);
 
 program.parse();

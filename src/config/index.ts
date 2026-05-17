@@ -25,6 +25,10 @@ export interface AppConfig {
     sessions: number[]; // 要备份的会话 ID 列表，空表示全部
     format: string;
   };
+  // NapCat 配置
+  napcat: {
+    installDir: string;
+  };
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -41,6 +45,9 @@ const DEFAULT_CONFIG: AppConfig = {
     output: './backup',
     sessions: [],
     format: 'json',
+  },
+  napcat: {
+    installDir: '',
   },
 };
 
@@ -104,6 +111,21 @@ export class ConfigManager {
   updateBackup(config: Partial<AppConfig['backup']>) {
     const current = this.config.get('backup');
     this.config.set('backup', { ...current, ...config });
+  }
+
+  /**
+   * 获取 NapCat 配置
+   */
+  getNapcat() {
+    return this.config.get('napcat');
+  }
+
+  /**
+   * 更新 NapCat 配置
+   */
+  updateNapcat(config: Partial<AppConfig['napcat']>) {
+    const current = this.config.get('napcat');
+    this.config.set('napcat', { ...current, ...config });
   }
 
   /**

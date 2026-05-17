@@ -9,8 +9,21 @@ import { spawn, execSync } from 'child_process';
 import { existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import http from 'http';
+import os from 'os';
+import { configManager } from '../config/index.js';
 
-const DEFAULT_NAPCAT_DIR = resolve('E:/CodeProject/NapCat.Shell');
+const DEFAULT_NAPCAT_DIR = (() => {
+  // 优先使用配置保存的路径
+  const configured = configManager.getNapcat().installDir;
+  if (configured && existsSync(join(configured, 'NapCatWinBootMain.exe'))) {
+    return configured;
+  }
+  // 兜底：常见路径
+  for (const p of ['E:/CodeProject/NapCat.Shell', join(os.homedir(), '.qchat-cli', 'NapCat.Shell'), join(os.homedir(), 'NapCat.Shell')]) {
+    if (existsSync(join(p, 'NapCatWinBootMain.exe'))) return p;
+  }
+  return resolve('E:/CodeProject/NapCat.Shell');
+})();
 const NAPCAT_PORT = 3000;
 const POLL_INTERVAL_MS = 2000;
 const STARTUP_TIMEOUT_MS = 180_000; // 3 分钟超时
