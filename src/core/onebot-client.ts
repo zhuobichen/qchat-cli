@@ -840,6 +840,15 @@ export class OneBotClient {
       this.reconnectTimer = null;
     }
 
+    // 清理所有待处理的请求，避免内存泄漏
+    if (this.pendingRequests.size > 0) {
+      const error = new Error('WebSocket 连接已关闭');
+      for (const [, { reject }] of this.pendingRequests) {
+        try { reject(error); } catch {}
+      }
+      this.pendingRequests.clear();
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;

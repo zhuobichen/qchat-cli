@@ -122,10 +122,15 @@ export class AuditLogger {
 
     // 检查文件大小
     if (existsSync(this.config.logFile)) {
-      const stats = readFileSync(this.config.logFile, 'utf-8');
-      if (stats.length > this.config.maxFileSize * 1024) {
-        // 文件太大，截断前半部分
-        this.rotateLog();
+      try {
+        const fs = require('fs');
+        const stats = fs.statSync(this.config.logFile);
+        if (stats.size > this.config.maxFileSize * 1024) {
+          // 文件太大，截断前半部分
+          this.rotateLog();
+        }
+      } catch {
+        // 如果获取文件大小失败，直接追加
       }
     }
 
@@ -136,14 +141,19 @@ export class AuditLogger {
    * 轮转日志
    */
   private rotateLog(): void {
-    const backupFile = this.config.logFile + '.old';
-    const content = readFileSync(this.config.logFile, 'utf-8');
-    const lines = content.split('\n');
-    const half = Math.floor(lines.length / 2);
-    
-    // 保留后半部分
-    writeFileSync(backupFile, lines.slice(half).join('\n') + '\n');
-    writeFileSync(this.config.logFile, lines.slice(half).join('\n') + '\n');
+    try {
+      const backupFile = this.config.logFile + '.old';
+      const content = readFileSync(this.config.logFile, 'utf-8');
+      const lines = content.split('\n').filter(Boolean);
+      const half = Math.floor(lines.length / 2);
+      
+      // 把当前内容备份到 .old 文件
+      writeFileSync(backupFile, content, 'utf-8');
+      // 保留后半部分
+      writeFileSync(this.config.logFile, lines.slice(half).join('\n') + '\n', 'utf-8');
+    } catch (error) {
+      console.error('日志轮转失败:', error);
+    }
   }
 
   /**
