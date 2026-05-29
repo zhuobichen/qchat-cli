@@ -147,7 +147,14 @@ export class MessageMonitor {
     const previousMaxId = this.lastMessageSeq.get(sessionId) || 0;
     const myId = await this.getSelfId();
 
+    let newMaxId = previousMaxId;
+
     for (const msg of messages) {
+      // 更新当前最大 message_id
+      if (msg.message_id > newMaxId) {
+        newMaxId = msg.message_id;
+      }
+
       // 跳过已处理过的消息 ID（主要去重机制）
       if (this.processedMessageIds.has(msg.message_id)) {
         continue;
@@ -175,16 +182,15 @@ export class MessageMonitor {
       this.processedMessageIds.add(msg.message_id);
 
       // 限制已处理消息 ID 集合大小，防止内存泄漏
-      if (this.processedMessageIds.size > 1000) {
-        const idsToDelete = Array.from(this.processedMessageIds).slice(0, 500);
+      if (this.processedMessageIds.size > 2000) { // 稍微增加一点，避免频繁清理
+        const idsToDelete = Array.from(this.processedMessageIds).slice(0, 1000);
         idsToDelete.forEach(id => this.processedMessageIds.delete(id));
       }
     }
 
     // 更新最后处理序号（使用最大的 message_id）
-    const currentMaxId = Math.max(...messages.map(m => m.message_id));
-    if (currentMaxId > previousMaxId) {
-      this.lastMessageSeq.set(sessionId, currentMaxId);
+    if (newMaxId > previousMaxId) {
+      this.lastMessageSeq.set(sessionId, newMaxId);
     }
   }
 

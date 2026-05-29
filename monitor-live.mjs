@@ -482,13 +482,25 @@ function localPipe(uid, senderNick, text, msgTime, msgId) {
 async function poll() {
   for (const uid of FRIENDS) {
     try {
-      const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 5 });
+      const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 30 });
       if (!msgs || msgs.length === 0) continue;
+
+      // 按时间排序，从小到大
+      msgs.sort((a, b) => (a.time || 0) - (b.time || 0));
+
+      // 更新当前好友的最大时间戳，防止下一轮重复处理
+      let currentMaxTime = friendMaxTime[uid] || 0;
+      let updatedMaxTime = currentMaxTime;
 
       for (const msg of msgs) {
         // message_id 去重（统一 ID，原子文件锁）
         const msgId = getMsgId(msg);
         if (!tryLock(msgId)) continue;
+
+        // 更新最大时间戳
+        if (msg.time && msg.time > updatedMaxTime) {
+          updatedMaxTime = msg.time;
+        }
 
         // 自己发的消息 → 记上下文后跳过
         if (Number(msg.sender?.user_id) === MY_ID) {
@@ -501,15 +513,14 @@ async function poll() {
         if (!text) continue;
 
         const nick = msg.sender?.nickname || String(msg.sender?.user_id);
-        console.log(`[${new Date().toLocaleTimeString()}] ${nick}: ${text.slice(0, 60)}`);
 
-        addContext(uid, nick, text, msg.time);
-
-        // 时间边界：用 < 而非 <=，避免跳过与最后一条历史消息时间戳相同的新消息
-        if (msg.time < (friendMaxTime[uid] || 0)) {
-          console.log(`  ⏭ 历史消息，跳过`);
+        // 时间边界：用 <= 而不是 <，确保只处理新消息
+        if (msg.time <= currentMaxTime) {
           continue;
         }
+
+        console.log(`[${new Date().toLocaleTimeString()}] ${nick}: ${text.slice(0, 60)}`);
+        addContext(uid, nick, text, msg.time);
 
         // 当前批次内检测：是否已手动回复
         const alreadyRepliedInBatch = msgs.some(m =>
@@ -545,8 +556,14 @@ async function poll() {
           console.log(`  → 已写入 pending，等待 Claude Code 处理`);
         }
       }
+
+      // 更新时间边界
+      if (updatedMaxTime > currentMaxTime) {
+        friendMaxTime[uid] = updatedMaxTime;
+      }
     } catch (e) {
       // 忽略单次轮询错误，继续下一轮
+      console.error(`轮询错误 (${uid}):`, e.message);
     }
   }
   setTimeout(poll, POLL_MS);
