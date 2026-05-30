@@ -62,28 +62,48 @@ export class MessageFetcher {
     let currentSeq: number | undefined;
     const batchSize = 20;
     const limit = options.limit || Infinity;
+    const maxRetries = 3;
+    let consecutiveEmpty = 0;
 
     while (allMessages.length < limit) {
       let result: { messages: Message[] };
+      let retryCount = 0;
 
-      if (session.type === 'group') {
-        result = await this.client.getGroupMsgHistory(
-          session.id,
-          currentSeq,
-          batchSize
-        );
-      } else {
-        result = await this.client.getFriendMsgHistory(
-          session.id,
-          currentSeq,
-          batchSize
-        );
+      while (retryCount < maxRetries) {
+        try {
+          if (session.type === 'group') {
+            result = await this.client.getGroupMsgHistory(
+              session.id,
+              currentSeq,
+              batchSize
+            );
+          } else {
+            result = await this.client.getFriendMsgHistory(
+              session.id,
+              currentSeq,
+              batchSize
+            );
+          }
+          break;
+        } catch (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            console.warn(`获取消息失败 (${session.id}):`, error);
+            return allMessages;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
       }
 
       const messages = result.messages;
-      if (messages.length === 0) break;
 
-      // 过滤时间范围
+      if (messages.length === 0) {
+        consecutiveEmpty++;
+        if (consecutiveEmpty >= 3) break;
+        break;
+      }
+      consecutiveEmpty = 0;
+
       const filteredMessages = messages.filter(msg => {
         const msgTime = new Date(msg.time * 1000);
         if (options.after && msgTime < options.after) return false;
@@ -93,21 +113,18 @@ export class MessageFetcher {
 
       allMessages.push(...filteredMessages);
 
-      // 更新 seq 用于下一页
       currentSeq = messages[messages.length - 1].message_seq;
 
-      // 如果消息数量少于批次大小，说明已经到底
       if (messages.length < batchSize) break;
 
-      // 如果最后一条消息早于 after 时间，停止获取
       const lastMsgTime = new Date(messages[messages.length - 1].time * 1000);
       if (options.after && lastMsgTime < options.after) break;
+
+      if (allMessages.length >= limit) break;
     }
 
-    // 按时间排序（从旧到新）
     allMessages.sort((a, b) => a.time - b.time);
 
-    // 返回限制数量的消息
     return allMessages.slice(0, limit);
   }
 
