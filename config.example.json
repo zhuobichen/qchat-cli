@@ -5,6 +5,8 @@
   "replyWhitelist": [],
   "qzoneTargets": {},
   "deepseekApiKey": "",
+  "localAgentUrl": "",
+  "localAgentModel": "",
   "maxRawContext": 20,
   "maxReplyLength": 100,
   "maxContextMsgLength": 100,

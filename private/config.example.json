@@ -5,6 +5,8 @@
   "replyWhitelist": [],
   "qzoneTargets": {},
   "deepseekApiKey": "",
+  "localAgentUrl": "",
+  "localAgentModel": "",
   "maxRawContext": 20,
   "identityFile": "identity.md"
 }

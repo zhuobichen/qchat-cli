@@ -11,9 +11,13 @@
  *   # 云端 API 模式（需要 API key）
  *   npx tsx monitor-live.mjs --api-key sk-xxx
  *
- * 双模式：
- *   有 apiKey → 云端 DeepSeek API 回复
- *   无 apiKey → 写入 pending-messages.json，由 Claude Code 消费
+ *   # 本地 Agent 模式（Ollama / LM Studio，无需云端）
+ *   npx tsx monitor-live.mjs --local-agent-url http://localhost:11434 --local-agent-model qwen2.5:7b
+ *
+ * 三模式（按优先级）：
+ *   有 deepseekApiKey       → 云端 DeepSeek API 回复
+ *   有 localAgentUrl+model  → 本地 Agent 回复（Ollama 等 OpenAI 兼容接口）
+ *   都没有                  → 写入 pending-messages.json，由 Claude Code 消费
  */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
@@ -94,6 +98,10 @@ function parseArgs() {
       cfg.deepseekApiKey = args[++i];
     } else if (args[i] === '--whitelist' && args[i + 1]) {
       cfg.replyWhitelist = args[++i].split(',').map(Number);
+    } else if (args[i] === '--local-agent-url' && args[i + 1]) {
+      cfg.localAgentUrl = args[++i];
+    } else if (args[i] === '--local-agent-model' && args[i + 1]) {
+      cfg.localAgentModel = args[++i];
     }
   }
 }
@@ -106,6 +114,7 @@ const REPLY_WHITELIST = new Set(cfg.replyWhitelist || []);
 if (!MY_ID || FRIENDS.length === 0) {
   console.log('缺少必要配置。用法:');
   console.log('  npx tsx monitor-live.mjs --myqq <QQ号> --friends <QQ号1,QQ号2> [--api-key <key>] [--whitelist <QQ号>]');
+  console.log('  本地 Agent: --local-agent-url http://localhost:11434 --local-agent-model qwen2.5:7b');
   console.log('  或在 private/config.json 中配置 myQQ 和 monitoredFriends');
   releasePidLock();
   process.exit(1);
@@ -203,9 +212,20 @@ let friendMaxTime = {};
 const pipedMsgIds = new Set();
 
 const USE_CLOUD = !!cfg.deepseekApiKey;
-const MODE = USE_CLOUD ? '云端 DeepSeek API' : '本地管道 (pending-messages.json → Claude Code)';
 const DS_API_KEY = cfg.deepseekApiKey || '';
 const DS_BASE = 'https://api.deepseek.com';
+
+// 本地 Agent（如 Ollama / LM Studio，提供 OpenAI 兼容接口）
+// 优先级：云端 > 本地 Agent > 本地管道
+const LOCAL_AGENT_URL = cfg.localAgentUrl || '';   // 如 http://localhost:11434
+const LOCAL_AGENT_MODEL = cfg.localAgentModel || ''; // 如 qwen2.5:7b
+const USE_LOCAL_AGENT = !!LOCAL_AGENT_URL && !!LOCAL_AGENT_MODEL;
+
+const MODE = USE_CLOUD
+  ? '云端 DeepSeek API'
+  : USE_LOCAL_AGENT
+    ? `本地 Agent (${LOCAL_AGENT_URL} · ${LOCAL_AGENT_MODEL})`
+    : '本地管道 (pending-messages.json → Claude Code)';
 
 let friendContext = {};        // 最近原始消息
 let friendContextSummary = {}; // 更早对话的压缩摘要
@@ -342,7 +362,7 @@ async function preloadHistory(uid) {
         friendContextSummary[uid] = [saved];
         console.log(`    ✓ 已加载历史摘要 (${saved.length} 字)`);
       }
-    } else if (USE_CLOUD && allMsgs.length > 0) {
+    } else if ((USE_CLOUD || USE_LOCAL_AGENT) && allMsgs.length > 0) {
       console.log('    AI 正在生成历史摘要（仅此一次）...');
       try {
         const historyText = allMsgs.slice(0, 300).map(m => {
@@ -356,21 +376,25 @@ async function preloadHistory(uid) {
           return `[${name}]: ${text}`;
         }).join('\n');
 
-        const compressRes = await fetch(`${DS_BASE}/v1/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${DS_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: 'deepseek-v4-pro',
-            messages: [{
-              role: 'user',
-              content: `请将以下两个人的QQ聊天历史压缩为一个简洁摘要。保留：关键话题、重要事件、对方的性格偏好、我们之间的称呼。控制在300字以内。\n\n${historyText}`,
-            }],
-            max_tokens: 500,
-          }),
-        });
+        const isCloud = USE_CLOUD;
+        const compressRes = await fetch(
+          isCloud ? `${DS_BASE}/v1/chat/completions` : `${LOCAL_AGENT_URL}/v1/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(isCloud ? { 'Authorization': `Bearer ${DS_API_KEY}` } : {}),
+            },
+            body: JSON.stringify({
+              model: isCloud ? 'deepseek-v4-pro' : LOCAL_AGENT_MODEL,
+              messages: [{
+                role: 'user',
+                content: `请将以下两个人的QQ聊天历史压缩为一个简洁摘要。保留：关键话题、重要事件、对方的性格偏好、我们之间的称呼。控制在300字以内。\n\n${historyText}`,
+              }],
+              max_tokens: 500,
+            }),
+          }
+        );
         const compressData = await compressRes.json();
         const summary = compressData.choices?.[0]?.message?.content?.trim();
         if (summary) {
@@ -446,6 +470,54 @@ ${buildContextBlock(uid)}
   return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
+// ═══ 本地 Agent 回复：Ollama / LM Studio（OpenAI 兼容接口） ═══
+async function localAgentReply(uid, text) {
+  const identity = loadIdentity();
+  addContext(uid, uid, text, Date.now());
+
+  const memory = loadMemory(uid);
+  let memoryBlock = '';
+  if (memory.length > 0) {
+    const recent = memory.slice(-5);
+    const keywords = text.split(/[\s，。！？、]+/).filter(w => w.length >= 2);
+    const matched = memory.slice(0, -5).filter(m =>
+      keywords.some(kw => m.topic?.includes(kw) || m.summary?.includes(kw))
+    ).slice(-3);
+    const relevant = [...matched, ...recent];
+    if (relevant.length > 0) {
+      memoryBlock = `\n\n相关记忆：\n${relevant.map(m => `- ${m.topic}: ${m.summary}`).join('\n')}`;
+    }
+  }
+
+  const profile = loadProfile(uid);
+  const profileBlock = profile ? `\n\n对方画像：\n${profile}` : '';
+
+  const prompt = `你是以下身份人格。请对以下消息生成回复（符合人格风格，无需限制长度）。
+
+身份人格：
+${identity}${profileBlock}${memoryBlock}
+${buildContextBlock(uid)}
+
+请只输出回复内容，不要附加任何解释。`;
+
+  const aiRes = await fetch(`${LOCAL_AGENT_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: LOCAL_AGENT_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000,
+    }),
+  });
+
+  if (!aiRes.ok) {
+    const errBody = await aiRes.text().catch(() => '');
+    throw new Error(`本地 Agent API ${aiRes.status}: ${errBody.slice(0, 200)}`);
+  }
+  const data = await aiRes.json();
+  return data.choices?.[0]?.message?.content?.trim() || '';
+}
+
 // ═══ 本地管道：写入 pending-messages.json（根因1修复：pipedMsgIds 去重） ═══
 function localPipe(uid, senderNick, text, msgTime, msgId) {
   // 内存去重：同一个消息 ID 不重复写入 pending
@@ -478,72 +550,117 @@ function localPipe(uid, senderNick, text, msgTime, msgId) {
   writeFileSync(PENDING_FILE, JSON.stringify(pending, null, 2));
 }
 
-// ═══ 主轮询 ═══
+// ═══ 主轮询（聚合模式：单批次多条新消息只回复一次） ═══
 async function poll() {
   for (const uid of FRIENDS) {
     try {
-      const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 5 });
+      const msgs = await api('/get_friend_msg_history', { user_id: uid, count: 20 });
       if (!msgs || msgs.length === 0) continue;
 
-      for (const msg of msgs) {
-        // message_id 去重（统一 ID，原子文件锁）
-        const msgId = getMsgId(msg);
-        if (!tryLock(msgId)) continue;
+      // 按时间升序排序（旧→新），确保时间边界与聚合顺序正确
+      msgs.sort((a, b) => (a.time || 0) - (b.time || 0));
 
-        // 自己发的消息 → 记上下文后跳过
+      // ── 首次轮询 / 预加载失败时初始化时间边界 ──
+      // 防止首批历史消息被当作新消息逐条回复
+      if (!friendMaxTime[uid]) {
+        const maxTime = Math.max(...msgs.map(m => m.time || 0));
+        friendMaxTime[uid] = maxTime;
+        // 锁定本批次所有消息，防止下次重复处理
+        for (const msg of msgs) tryLock(getMsgId(msg));
+        console.log(`  [${uid}] 初始化时间边界: ${new Date(maxTime * 1000).toLocaleTimeString()}（之前的消息不回复）`);
+        continue;
+      }
+
+      // ── 分类本批次消息 ──
+      const newMessages = [];   // 需要回复的新消息
+      const selfTexts = [];     // 自己发的消息（仅记上下文）
+
+      for (const msg of msgs) {
+        const msgId = getMsgId(msg);
+        if (!tryLock(msgId)) continue;  // 已处理过，跳过
+
+        const text = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
+
+        // 自己发的消息 → 记上下文
         if (Number(msg.sender?.user_id) === MY_ID) {
-          const myText = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
-          if (myText) addContext(uid, 'me', myText, msg.time);
+          if (text) selfTexts.push({ text, time: msg.time });
           continue;
         }
 
-        const text = msg.message.map(s => s.type === 'text' ? s.data.text : '').join('').trim();
         if (!text) continue;
 
         const nick = msg.sender?.nickname || String(msg.sender?.user_id);
-        console.log(`[${new Date().toLocaleTimeString()}] ${nick}: ${text.slice(0, 60)}`);
 
-        addContext(uid, nick, text, msg.time);
-
-        // 时间边界：用 < 而非 <=，避免跳过与最后一条历史消息时间戳相同的新消息
-        if (msg.time < (friendMaxTime[uid] || 0)) {
-          console.log(`  ⏭ 历史消息，跳过`);
+        // 历史消息：记上下文但不回复
+        if (msg.time < friendMaxTime[uid]) {
+          addContext(uid, nick, text, msg.time);
           continue;
         }
 
         // 当前批次内检测：是否已手动回复
-        const alreadyRepliedInBatch = msgs.some(m =>
+        const alreadyReplied = msgs.some(m =>
           Number(m.sender?.user_id) === MY_ID && m.time >= msg.time
         );
-        if (alreadyRepliedInBatch) {
-          console.log(`  ⏭ 已手动回复，跳过`);
+        if (alreadyReplied) {
           saveMemory(uid, { topic: text.slice(0, 30), summary: '(手动回复)' });
           continue;
         }
 
-        if (!REPLY_WHITELIST.has(uid)) {
-          console.log(`  ⚠ ${nick} 不在回复白名单，仅监听`);
-          continue;
-        }
+        newMessages.push({ msg, text, time: msg.time, nick });
+      }
 
-        // ── 回复入口：云端 / 本地 ──
+      // 记录自己的消息到上下文
+      for (const sm of selfTexts) {
+        addContext(uid, 'me', sm.text, sm.time);
+      }
+
+      // 更新时间边界
+      const batchMax = Math.max(...msgs.map(m => m.time || 0));
+      if (batchMax > friendMaxTime[uid]) {
+        friendMaxTime[uid] = batchMax;
+      }
+
+      // 没有需要回复的新消息 → 跳过
+      if (newMessages.length === 0) continue;
+
+      // ── 聚合：多条新消息合并为一条，只回复一次 ──
+      const combinedText = newMessages.map(nm => nm.text).join('\n');
+      const lastNick = newMessages[newMessages.length - 1].nick;
+      const lastTime = newMessages[newMessages.length - 1].time;
+      const tag = newMessages.length > 1 ? ` (聚合${newMessages.length}条)` : '';
+      console.log(`[${new Date().toLocaleTimeString()}] ${lastNick}: ${combinedText.slice(0, 80)}${tag}`);
+
+      // 白名单检查
+      if (!REPLY_WHITELIST.has(uid)) {
+        console.log(`  ⚠ ${lastNick} 不在回复白名单，仅监听`);
+        continue;
+      }
+
+      // 生成回复（仅一次）
+      try {
         if (USE_CLOUD) {
-          try {
-            const reply = await cloudReply(uid, text);
-            if (reply) {
-              await sendMessage(uid, reply);
-              addContext(uid, 'me', reply, Date.now());
-              console.log(`  → 已回复: ${reply.slice(0, 50)}`);
-              saveMemory(uid, { topic: text.slice(0, 30), summary: reply.slice(0, 60) });
-            }
-          } catch (e) {
-            console.error(`  ✗ 云端回复失败: ${e.message}`);
+          const reply = await cloudReply(uid, combinedText);  // 内部 addContext
+          if (reply) {
+            await sendMessage(uid, reply);
+            addContext(uid, 'me', reply, Date.now());
+            console.log(`  → 已回复: ${reply.slice(0, 50)}`);
+            saveMemory(uid, { topic: combinedText.slice(0, 30), summary: reply.slice(0, 60) });
+          }
+        } else if (USE_LOCAL_AGENT) {
+          const reply = await localAgentReply(uid, combinedText);  // 内部 addContext
+          if (reply) {
+            await sendMessage(uid, reply);
+            addContext(uid, 'me', reply, Date.now());
+            console.log(`  → 已回复: ${reply.slice(0, 50)}`);
+            saveMemory(uid, { topic: combinedText.slice(0, 30), summary: reply.slice(0, 60) });
           }
         } else {
-          // 本地管道模式（根因1修复：pipedMsgIds 防止重复写入）
-          localPipe(uid, nick, text, msg.time, msgId);
-          console.log(`  → 已写入 pending，等待 Claude Code 处理`);
+          // 本地管道模式：写入 pending，由外部消费者处理
+          localPipe(uid, lastNick, combinedText, lastTime, getMsgId(newMessages[newMessages.length - 1].msg));
+          console.log(`  → 已写入 pending，等待处理`);
         }
+      } catch (e) {
+        console.error(`  ✗ 回复失败: ${e.message}`);
       }
     } catch (e) {
       // 忽略单次轮询错误，继续下一轮

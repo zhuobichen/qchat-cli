@@ -13,6 +13,8 @@ const args = [
 ];
 if (cfg.replyWhitelist?.length) args.push('--whitelist', cfg.replyWhitelist.join(','));
 if (cfg.deepseekApiKey) args.push('--api-key', cfg.deepseekApiKey);
+if (cfg.localAgentUrl) args.push('--local-agent-url', cfg.localAgentUrl);
+if (cfg.localAgentModel) args.push('--local-agent-model', cfg.localAgentModel);
 
 process.argv = [process.argv[0], process.argv[1], ...args];
 await import('../monitor-live.mjs');

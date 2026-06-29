@@ -4,8 +4,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const API_KEY = 'sk-14924f01020744659165b23c63e66935';
-const BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const API_KEY = process.env.DASHSCOPE_API_KEY;
+if (!API_KEY) {
+  console.error('请设置环境变量 DASHSCOPE_API_KEY');
+  process.exit(1);
+}
+const BASE_URL = process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
 const imagePath = join(__dirname, 'logo.png');
 const imageBuffer = readFileSync(imagePath);
@@ -19,7 +23,7 @@ const res = await fetch(`${BASE_URL}/chat/completions`, {
     'Authorization': `Bearer ${API_KEY}`,
   },
   body: JSON.stringify({
-    model: 'qwen3.6-plus',
+    model: process.env.DASHSCOPE_MODEL || 'qwen-vl-plus',
     messages: [{
       role: 'user',
       content: [

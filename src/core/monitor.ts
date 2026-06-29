@@ -79,12 +79,13 @@ export class MessageMonitor {
     console.log(chalk.dim('按 Ctrl+C 停止'));
     console.log('');
 
-    // 初始化最后消息 ID
+    // 初始化最后消息 ID（取本批次最大 message_id，避免顺序不确定导致漏判）
     for (const sessionId of this.monitoredSessions) {
       try {
         const result = await this.client.getFriendMsgHistory(sessionId, undefined, 1);
         if (result.messages.length > 0) {
-          const lastMsgId = result.messages[0].message_id;
+          const sorted = result.messages.sort((a, b) => a.message_id - b.message_id);
+          const lastMsgId = sorted[sorted.length - 1].message_id;
           this.lastMessageSeq.set(sessionId, lastMsgId);
           this.processedMessageIds.add(lastMsgId);  // 避免重复处理最新一条
           console.log(chalk.dim(`  会话 ${sessionId} 初始化完成，最后消息 ID: ${lastMsgId}`));
@@ -147,6 +148,9 @@ export class MessageMonitor {
     const previousMaxId = this.lastMessageSeq.get(sessionId) || 0;
     const myId = await this.getSelfId();
 
+    // 聚合：收集本批次所有新消息，只回复一次
+    const newMessages: Message[] = [];
+
     for (const msg of messages) {
       // 跳过已处理过的消息 ID（主要去重机制）
       if (this.processedMessageIds.has(msg.message_id)) {
@@ -160,16 +164,15 @@ export class MessageMonitor {
 
       // 跳过自己发的消息
       if (myId && msg.user_id === myId) {
+        this.processedMessageIds.add(msg.message_id);
         continue;
       }
 
       // 显示消息
       this.displayMessage(msg);
 
-      // 自动回复
-      if (this.replyCallback && safetyManager.isAllowed(sessionId)) {
-        await this.autoReply(sessionId, msg);
-      }
+      // 收集到待回复列表
+      newMessages.push(msg);
 
       // 标记为已处理
       this.processedMessageIds.add(msg.message_id);
@@ -178,6 +181,30 @@ export class MessageMonitor {
       if (this.processedMessageIds.size > 1000) {
         const idsToDelete = Array.from(this.processedMessageIds).slice(0, 500);
         idsToDelete.forEach(id => this.processedMessageIds.delete(id));
+      }
+    }
+
+    // 聚合回复：多条新消息合并为一次回复，避免逐条回复导致刷屏
+    if (newMessages.length > 0 && this.replyCallback && safetyManager.isAllowed(sessionId)) {
+      const combinedText = newMessages
+        .map(m => this.getMessageText(m))
+        .join('\n');
+      // 用最后一条消息作为回复上下文，但内容合并
+      const lastMsg = newMessages[newMessages.length - 1];
+      const mergedMsg: Message = {
+        ...lastMsg,
+        message: [{ type: 'text', data: { text: combinedText } }],
+        raw_message: combinedText,
+      };
+      const tag = newMessages.length > 1 ? ` (聚合${newMessages.length}条)` : '';
+      try {
+        const replyText = await this.replyCallback(mergedMsg);
+        if (replyText) {
+          await this.client.sendPrivateMessage(sessionId, replyText);
+          console.log(chalk.green(`[自动回复]${tag} ${replyText}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`回复失败: ${error}`));
       }
     }
 
@@ -212,24 +239,5 @@ export class MessageMonitor {
         return `[${segment.type}]`;
       })
       .join('');
-  }
-
-  /**
-   * 自动回复
-   */
-  private async autoReply(sessionId: number, msg: Message) {
-    if (!this.replyCallback) return;
-
-    try {
-      const replyText = await this.replyCallback(msg);
-
-      if (!replyText) return;
-
-      // 发送回复（使用封装好的 API）
-      await this.client.sendPrivateMessage(sessionId, replyText);
-      console.log(chalk.green(`[自动回复] ${replyText}`));
-    } catch (error) {
-      console.log(chalk.red(`回复失败: ${error}`));
-    }
   }
 }
