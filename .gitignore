@@ -9,7 +9,11 @@ monitor-state.json
 .qzone-cookie
 qzone-qrcode*.png
 private/config.json
+private/group-bot.config.json
+private/skills/
 private/memory/
+private/emoji-library/
 private/locks/
 private/profiles/
 private/DEBUG-LOG.md
+references/

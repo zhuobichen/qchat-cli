@@ -39,11 +39,9 @@ export class SafetyManager {
       return false;
     }
 
-    // 白名单为空时，允许所有
+    // 空白名单默认拒绝，避免误把“尚未配置”当成“允许全部”。
     const allowed = this.config.get('allowedSessions');
-    if (allowed.length === 0) {
-      return true;
-    }
+    if (allowed.length === 0) return false;
 
     // 检查白名单
     return allowed.includes(sessionId);

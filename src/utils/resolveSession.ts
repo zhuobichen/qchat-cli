@@ -8,8 +8,8 @@ import chalk from 'chalk';
  */
 export async function resolveSession(input: string): Promise<number> {
   // 纯数字 → 直接返回
-  if (/^\d{5,}$/.test(input)) {
-    return parseInt(input);
+  if (/^\d{5,12}$/.test(input)) {
+    return Number(input);
   }
 
   try {
@@ -37,8 +37,8 @@ export async function resolveSession(input: string): Promise<number> {
   }
 
   // 都匹配不到 → 尝试按数字
-  const asNum = parseInt(input);
-  if (!isNaN(asNum)) return asNum;
+  const asNum = Number(input);
+  if (Number.isSafeInteger(asNum) && asNum > 0) return asNum;
 
   console.log(chalk.red(`找不到 "${input}" 对应的好友或群`));
   console.log(chalk.gray('提示: 运行 qce list friends 查看所有好友'));

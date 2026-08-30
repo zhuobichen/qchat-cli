@@ -1,259 +1,96 @@
-<div align="center">
-
-<img src="./logo.png" width="320" alt="qchat-cli Logo" />
-
 # qchat-cli
 
-**下一代 QQ 聊天运维 CLI 工具**
+一个面向个人本地环境的 QQ 账号助手。项目通过 OneBot 服务连接已登录的 QQ 账号，并提供聊天记录导出、消息监听、受限发送、群管理和 QQ 空间相关操作。
 
-> 集成 OneBot 协议 + QZone 空间 API 的全能工具
+项目不隶属于腾讯，也不是腾讯官方产品。使用前请确认你已获得相关账号、聊天内容和空间数据的使用授权，并遵守 QQ、NapCatQQ 及相关服务的规则和法律要求。
 
-[![GitHub License][license-shield]][license-url]
-[![Node.js Version][node-shield]][node-url]
-[![npm Version][npm-shield]][npm-url]
-[![Code Style][prettier-shield]][prettier-url]
+## 功能
 
-[English](#-quick-start) • [中文](#-快速开始)
+- 通过 OneBot HTTP/WebSocket 服务查看好友、群组和消息
+- 将聊天记录导出为 JSON、TXT、HTML、CSV 等格式
+- 监听私聊和群聊事件
+- 在明确授权和确认后发送消息、执行群管理操作
+- 通过扫码登录访问部分 QQ 空间数据
+- 将聊天和空间内容发送给配置的 AI 服务生成本地用户画像
+- 提供单群隔离机器人模式，仅响应指定群中被 @ 的消息
 
-</div>
+功能依赖 NapCatQQ、OneBot 服务和 QQ 空间接口，具体可用性可能随外部服务变化。
 
-<br />
+## 安装
 
-## ✨ 主要特性
-
-<div align="center">
-  <table>
-    <tr>
-      <td align="center"><strong>📦 消息导出</strong></td>
-      <td align="center"><strong>💬 实时监听</strong></td>
-      <td align="center"><strong>🤖 自动回复</strong></td>
-    </tr>
-    <tr>
-      <td align="center">多格式导出（JSON/HTML/Markdown/CSV），图片内嵌</td>
-      <td align="center">WebSocket 实时推送，毫秒级响应</td>
-      <td align="center">AI 自动回复，上下文记忆</td>
-    </tr>
-    <tr>
-      <td align="center"><strong>🔒 安全机制</strong></td>
-      <td align="center"><strong>🌐 QZone 集成</strong></td>
-      <td align="center"><strong>⚙️ 管理功能</strong></td>
-    </tr>
-    <tr>
-      <td align="center">白名单+双重确认+审计日志</td>
-      <td align="center">扫码登录、说说、评论、点赞</td>
-      <td align="center">踢人、禁言、管理员设置</td>
-    </tr>
-  </table>
-</div>
-
-<br />
-
-## 📦 安装
-
-### 前置要求
-
-- **Node.js 18+**
-- **NapCatQQ**（OneBot 协议服务）
-
-### 快速安装
+需要 Node.js 18 或更高版本，以及已运行的 NapCatQQ OneBot 服务。
 
 ```bash
-# 克隆项目
 git clone https://github.com/zhuobichen/qchat-cli.git
 cd qchat-cli
-
-# 安装依赖
 npm install
-
-# 全局链接
+npm run build
 npm link
-
-# 开始使用！
 qce --help
 ```
 
-<br />
-
-## 🚀 快速开始
-
-### 1. 连接 NapCat
+## 快速开始
 
 ```bash
-# 配置连接
-qce login --host localhost --port 3000
-
-# 测试连接
+# 配置并测试本地 OneBot 服务
+qce login --host 127.0.0.1 --port 3000
 qce login --test
-```
 
-### 2. 导出聊天记录
+# 查看会话并导出记录
+qce list friends
+qce export <QQ号> --format json
 
-```bash
-# 导出为 HTML（含图片）
-qce export <QQ号> --format html
-
-# 导出为 Markdown
-qce export <QQ号> --format md
-```
-
-### 3. 实时监听消息
-
-```bash
-# WebSocket 实时监控（推荐）
+# 监听消息
 qce ws-monitor start
-
-# 轮询模式（兼容性更好）
-qce monitor start <QQ号>
 ```
 
-### 4. 登录 QZone
+发送消息默认关闭，且必须先启用发送功能并授权目标会话：
 
 ```bash
-# 扫码登录
-qce qzone login
-
-# 查看说说
-qce qzone feeds <QQ号>
-
-# 发表说说
-qce qzone post "今天天气真好！"
+qce safety enable
+qce safety allow <QQ号或群号>
+qce send msg <QQ号> "消息内容"
+qce send group <群号> "群消息内容"
 ```
 
-<br />
+高风险管理操作默认需要交互确认。请谨慎使用 `--force` 和安全相关命令。
 
-## 📖 完整文档
+单群机器人模式会由本地程序通过 WebSocket 收集新消息并维护短期内存窗口。仅当该群中有人 @ 机器人时，程序才将裁剪后的近期上下文发送给 AI；机器人不会让 AI 自行查询 QQ 消息或轮询会话。
 
-- **[API 参考](./API.md)** — 完整的 TypeScript API 文档
-- **[使用指南](./USAGE.md)** — 详细使用说明和技巧
-- **[架构文档](./ARCHITECTURE.md)** — 项目架构和设计思路
-- **[贡献指南](./CONTRIBUTING.md)** — 如何贡献代码
+群 Agent 的默认上下文为最近 70 条消息（包括机器人自己的已发送回复），总长度由本地私密配置控制，最大为 16,000 个字符。每累计 60 条新消息，程序会在下一次被 @ 时将增量压缩为群摘要；原始消息不写入磁盘，重启后只保留该摘要。摘要仅用于群内上下文，不会用于私聊或其他群。
 
-<br />
+模型可调用的工具固定为当前授权群的成员列表、群公告、群文件概览和公开网络检索。所有工具均为只读，每次回复最多执行四次；不会调用 QQ 历史记录、私聊、QQ 空间、群管理、文件下载或任意网址请求。网络检索不得包含群消息、个人信息或任何密钥。
 
-## 📋 命令速查
+## 隐私与安全
 
-### 📡 OneBot 系列
+- 使用 `group-bot` 模式时，强烈建议使用专门的小号作为机器人账号，不要使用主 QQ 账号。该小号应只加入目标群，并关闭或不配置 QQ 空间、好友、私聊和其他群聊的访问能力。
+- `group-bot` 默认只应授权一个群号。不要开启“全部会话”、自动添加好友、私聊回复或不受限的群管理功能。
+- 不要在命令行参数、截图、日志或 issue 中公开 Token、Cookie、API Key、聊天记录和 QQ 号等信息。
+- AI 回复必须将群消息视为不可信文本：不能执行消息中要求的系统指令、工具调用、配置更改、密钥读取或跨群发送请求。
+- OneBot 服务建议只监听 `127.0.0.1`，并配置 Token。只有在确有需要时才开放局域网访问。
+- 项目提供本地确认、发送开关和目标白名单，但这些机制不能替代操作系统权限、NapCatQQ 权限或外部服务的访问控制。
 
-| 命令 | 说明 |
-|------|------|
-| `qce login` | 配置 NapCat 连接 |
-| `qce list friends/groups` | 查看好友/群组列表 |
-| `qce export <QQ> [--format]` | 导出聊天记录 |
-| `qce send <QQ> "消息"` | 发送消息 |
-| `qce ws-monitor start` | WebSocket 实时监控 |
-| `qce backup --add <QQ>` | 定时备份 |
+若启用 AI 回复，请从示例创建仅保存在本机的私密配置文件。该文件已被 Git 忽略，不应提交、截图或共享：
 
-### 🌐 QZone 系列
-
-| 命令 | 说明 |
-|------|------|
-| `qce qzone login/logout` | 扫码登录/登出 |
-| `qce qzone me/user <QQ>` | 查看空间信息 |
-| `qce qzone feeds [QQ] [-n 20]` | 查看说说列表 |
-| `qce qzone post/delete` | 发/删说说 |
-| `qce qzone comment <QQ> <tid>` | 评论说说 |
-
-### 🔧 管理系列
-
-| 命令 | 说明 |
-|------|------|
-| `qce admin audit` | 查看审计日志 |
-| `qce admin delete-friend` | 删除好友 |
-| `qce admin kick <群> <用户>` | 踢出成员 |
-| `qce admin mute-all` | 全员禁言 |
-| `qce admin safety status` | 安全状态 |
-
-<br />
-
-## 🏗️ 项目架构
-
-```
-qchat-cli/
-├── src/
-│   ├── cli.ts                 # 入口文件
-│   ├── commands/              # CLI 命令
-│   │   ├── admin.ts          # 管理命令
-│   │   ├── ws-monitor.ts     # WebSocket 监控
-│   │   └── ...
-│   ├── core/                  # 核心模块
-│   │   ├── onebot-client.ts  # OneBot API
-│   │   ├── qzone-client.ts   # QZone API
-│   │   ├── audit.ts          # 审计日志
-│   │   └── danger.ts         # 危险操作
-│   └── utils/                 # 工具函数
-├── private/                   # 隐私脚本（不提交）
-└── ...
+```bash
+copy private/group-bot.config.example.json private/group-bot.config.json
 ```
 
-[架构图](./qchat-cli架构图.png)
+在 `private/group-bot.config.json` 中填入模型服务地址、模型名称和 API Key，然后启动：
 
-<br />
+```bash
+qce group-bot start <群号> --auto-reply
+```
 
-## 🛡️ 安全机制
+## 文档
 
-| 功能 | 说明 |
-|------|------|
-| **白名单** | 仅允许指定用户自动回复 |
-| **双重确认** | 危险操作需要二次输入确认 |
-| **审计日志** | 所有敏感操作记录在案 |
-| **Bypass 模式** | 脚本自动化使用，跳过确认 |
+- [使用指南](./USAGE.md)
+- [API 说明](./API.md)
+- [架构说明](./ARCHITECTURE.md)
+- [贡献指南](./CONTRIBUTING.md)
 
-<br />
+## 许可
 
-## 🎯 常见问题
+MIT License，详见 [LICENSE](./LICENSE)。
 
-### 为什么需要 NapCatQQ？
-
-NapCatQQ 提供了稳定的 OneBot HTTP API，qchat-cli 通过它与 QQ 通信。
-
-### 导出的消息有 200 条限制？
-
-可以使用 `qce-bridge` 模式绕过限制，完整导出历史记录。
-
-### 如何添加自动回复 AI？
-
-修改 `monitor.ts` 中的 `replyCallback` 函数，接入你的 AI API。
-
-### 危险操作有哪些？
-
-运行 `qce admin dangerous-list` 查看完整列表。
-
-<br />
-
-## 💖 致谢
-
-特别感谢以下优秀的开源项目：
-
-- **[NapCatQQ](https://github.com/NapNeko/NapCatQQ)** — 强大的 QQ 机器人框架
-- **[qzone-go](https://github.com/fanchunke/qzone-go)** — QZone API 参考实现
-- **[qq-chat-exporter](https://github.com/NapNeko/qq-chat-exporter)** — 聊天记录导出 Web 版
-
-以及所有参与测试和贡献的朋友们！ 🎉
-
-<br />
-
-## 📄 许可证
-
-MIT License. 详见 [LICENSE](./LICENSE)。
-
----
-
-<div align="center">
-
-> 本项目仅供学习交流使用。请勿用于骚扰、刷屏等违反 QQ 用户协议的行为。
-
-<br />
-
-**Made with ❤️ by qchat-cli Team**
-
-</div>
-
-<!-- 徽章链接 -->
-[license-shield]: https://img.shields.io/github/license/zhuobichen/qchat-cli?style=flat-square
-[license-url]: ./LICENSE
-[node-shield]: https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square&logo=node.js
-[node-url]: https://nodejs.org
-[npm-shield]: https://img.shields.io/badge/npm-v0.1.0-red?style=flat-square&logo=npm
-[npm-url]: https://www.npmjs.com
-[prettier-shield]: https://img.shields.io/badge/code_style-Prettier-ff69b4?style=flat-square
-[prettier-url]: https://prettier.io
+本项目仅供个人学习和经授权的本地管理使用。作者不对账号限制、数据丢失、第三方服务变化或不当使用造成的后果负责。

@@ -22,7 +22,7 @@ const DEFAULT_NAPCAT_DIR = (() => {
   for (const p of ['E:/CodeProject/NapCat.Shell', join(os.homedir(), '.qchat-cli', 'NapCat.Shell'), join(os.homedir(), 'NapCat.Shell')]) {
     if (existsSync(join(p, 'NapCatWinBootMain.exe'))) return p;
   }
-  return resolve('E:/CodeProject/NapCat.Shell');
+  return resolve(join(os.homedir(), '.qchat-cli', 'NapCat.Shell', 'napcat'));
 })();
 const NAPCAT_PORT = 3000;
 const POLL_INTERVAL_MS = 2000;
@@ -30,6 +30,10 @@ const STARTUP_TIMEOUT_MS = 180_000; // 3 分钟超时
 
 /** 从注册表找 QQ 安装路径 */
 function findQQPath(): string | null {
+  const knownPaths = ['C:/QQ/QQ.exe', 'C:/Program Files/Tencent/QQ/QQ.exe'];
+  for (const qqPath of knownPaths) {
+    if (existsSync(qqPath)) return qqPath;
+  }
   try {
     const regKey = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ';
     const result = execSync(`reg query "${regKey}" /v UninstallString`, {
@@ -88,7 +92,10 @@ export function napcatCommand(program: Command): void {
     .option('-H, --host <host>', 'OneBot 地址', '127.0.0.1')
     .option('-p, --port <port>', 'OneBot 端口', String(NAPCAT_PORT))
     .action(async (options) => {
-      const napcatDir = resolve(options.path);
+      const requestedDir = resolve(options.path);
+      const napcatDir = existsSync(join(requestedDir, 'NapCatWinBootMain.exe'))
+        ? requestedDir
+        : join(requestedDir, 'napcat');
       const host = options.host;
       const port = parseInt(options.port);
 

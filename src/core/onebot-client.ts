@@ -76,7 +76,7 @@ export type MessageSegment =
   | { type: 'text'; data: { text: string } }
   | { type: 'image'; data: { file: string; url?: string } }
   | { type: 'face'; data: { id: number } }
-  | { type: 'at'; data: { qq: number | 'all' } }
+  | { type: 'at'; data: { qq: number | 'all' | string; text?: string; name?: string } }
   | { type: 'reply'; data: { id: number } }
   | { type: 'video'; data: { file: string } }
   | { type: 'voice'; data: { file: string } }
@@ -686,7 +686,7 @@ export class OneBotClient {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const wsUrl = this.token 
-        ? `${this.wsUrl}?access_token=${this.token}`
+        ? `${this.wsUrl}?access_token=${encodeURIComponent(this.token)}`
         : this.wsUrl;
 
       logger.info(`正在连接到 WebSocket: ${this.wsUrl}`);

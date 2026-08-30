@@ -4,8 +4,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const API_KEY = 'sk-14924f01020744659165b23c63e66935';
+const API_KEY = process.env.DASHSCOPE_API_KEY;
 const BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+if (!API_KEY) {
+  throw new Error('Set DASHSCOPE_API_KEY before running this local test.');
+}
 
 const imagePath = join(__dirname, 'logo.png');
 const imageBuffer = readFileSync(imagePath);

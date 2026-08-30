@@ -23,6 +23,7 @@ import {
 
 /** 尝试从 config 读取 DeepSeek API key */
 function readApiKey(): string | null {
+  if (process.env.DEEPSEEK_API_KEY?.trim()) return process.env.DEEPSEEK_API_KEY.trim();
   const configPath = join(process.cwd(), 'private', 'config.json');
   try {
     if (existsSync(configPath)) {

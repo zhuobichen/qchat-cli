@@ -43,9 +43,22 @@ export class AuthManager {
    * 更新配置
    */
   updateConfig(config: Partial<AuthConfig>): void {
-    if (config.host !== undefined) this.config.set('host', config.host);
-    if (config.port !== undefined) this.config.set('port', config.port);
-    if (config.token !== undefined) this.config.set('token', config.token);
+    if (config.host !== undefined) {
+      const host = config.host.trim();
+      if (!host || /[\s\\/@?#]/.test(host)) throw new Error('主机地址格式无效');
+      this.config.set('host', host);
+    }
+    if (config.port !== undefined) {
+      if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
+        throw new Error('端口必须是 1-65535 之间的整数');
+      }
+      this.config.set('port', config.port);
+    }
+    if (config.token !== undefined) {
+      const token = config.token.trim();
+      if (token.length > 512 || /[\r\n]/.test(token)) throw new Error('Token 格式无效');
+      this.config.set('token', token || undefined);
+    }
     this.client = null; // 重置客户端
   }
 
