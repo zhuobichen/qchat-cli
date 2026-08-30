@@ -13,6 +13,7 @@ import { adminCommand } from './commands/admin.js';
 import { wsMonitorCommand } from './commands/ws-monitor.js';
 import { setupCommand } from './commands/setup.js';
 import { profileCommand } from './commands/profile.js';
+import { groupBotCommand } from './commands/group-bot.js';
 
 const program = new Command();
 
@@ -34,5 +35,6 @@ adminCommand(program);
 wsMonitorCommand(program);
 setupCommand(program);
 profileCommand(program);
+groupBotCommand(program);
 
 program.parse();

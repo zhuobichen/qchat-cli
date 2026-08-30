@@ -1,0 +1,12 @@
+{
+  "baseUrl": "https://YOUR-DASHSCOPE-ENDPOINT/compatible-mode/v1",
+  "apiKey": "",
+  "model": "qwen3.7-flash",
+  "maxInputChars": 16000,
+  "maxOutputTokens": 400,
+  "enableThinking": true,
+  "historyMessages": 70,
+  "visionModel": "qwen2.5-vl-7b-instruct",
+  "skillDirectory": "private/skills",
+  "emojiSourceDirectory": "C:\\path\\to\\personal_emoji\\Ori"
+}

@@ -12,6 +12,28 @@ export function sendCommand(program: Command): void {
 
   // 发送消息子命令
   send
+    .command('group <groupId> <message>')
+    .description('发送消息到授权群')
+    .option('--force', '跳过确认')
+    .action(async (groupIdValue, message, options) => {
+      const groupId = Number(groupIdValue);
+      if (!Number.isSafeInteger(groupId) || groupId <= 0) {
+        console.log(chalk.red('群号必须是正整数'));
+        return;
+      }
+      if (!authManager.isConfigured() || !safetyManager.isAllowed(groupId)) {
+        console.log(chalk.red(`群 ${groupId} 未获发送授权`));
+        return;
+      }
+      if (!options.force && safetyManager.isConfirmationRequired()) {
+        const { confirm } = await inquirer.prompt([{ type: 'confirm', name: 'confirm', message: `确认发送到群 ${groupId}？`, default: false }]);
+        if (!confirm) return;
+      }
+      await authManager.getClient().sendGroupMessage(groupId, message);
+      console.log(chalk.green('群消息已发送'));
+    });
+
+  send
     .command('msg <session> <message>')
     .description('发送消息到指定会话')
     .option('--force', '跳过确认')
@@ -69,7 +91,7 @@ export function sendCommand(program: Command): void {
       console.log(chalk.bold('安全配置:'));
       console.log(`  发送功能: ${config.allowSending ? chalk.green('已启用') : chalk.red('已禁用')}`);
       console.log(`  发送确认: ${config.requireConfirmation ? '是' : '否'}`);
-      console.log(`  白名单: ${config.allowedSessions.length > 0 ? config.allowedSessions.join(', ') : '(空，允许所有)'}`);
+      console.log(`  白名单: ${config.allowedSessions.length > 0 ? config.allowedSessions.join(', ') : '(空，全部拒绝)'}`);
     });
 
   safety
@@ -92,7 +114,11 @@ export function sendCommand(program: Command): void {
     .command('allow <sessionId>')
     .description('添加会话到白名单')
     .action((sessionId) => {
-      const id = parseInt(sessionId);
+      const id = Number(sessionId);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        console.log(chalk.red('会话 ID 必须是正整数'));
+        return;
+      }
       safetyManager.allow(id);
       console.log(chalk.green(`已授权会话 ${id}`));
     });
@@ -101,7 +127,11 @@ export function sendCommand(program: Command): void {
     .command('deny <sessionId>')
     .description('从白名单移除会话')
     .action((sessionId) => {
-      const id = parseInt(sessionId);
+      const id = Number(sessionId);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        console.log(chalk.red('会话 ID 必须是正整数'));
+        return;
+      }
       safetyManager.deny(id);
       console.log(chalk.green(`已取消会话 ${id} 的授权`));
     });

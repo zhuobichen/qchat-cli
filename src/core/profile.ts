@@ -2,7 +2,7 @@
  * 用户画像模块
  * 从聊天记录 + QZone 说说生成结构化用户画像
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, chmodSync } from 'fs';
 import { join, resolve } from 'path';
 
 const PROFILES_DIR = resolve('private/profiles');
@@ -14,6 +14,12 @@ export interface ProfileMeta {
   size: number;
 }
 
+function normalizeUin(uin: number | string): string {
+  const value = String(uin);
+  if (!/^\d{5,12}$/.test(value)) throw new Error('QQ 号必须是 5-12 位数字');
+  return value;
+}
+
 function ensureDir(): void {
   if (!existsSync(PROFILES_DIR)) {
     mkdirSync(PROFILES_DIR, { recursive: true });
@@ -21,7 +27,7 @@ function ensureDir(): void {
 }
 
 export function getProfilePath(uin: number | string): string {
-  return join(PROFILES_DIR, `${uin}.md`);
+  return join(PROFILES_DIR, `${normalizeUin(uin)}.md`);
 }
 
 export function loadProfile(uin: number | string): string {
@@ -40,7 +46,9 @@ export function profileExists(uin: number | string): boolean {
 
 export function saveProfile(uin: number | string, content: string): void {
   ensureDir();
-  writeFileSync(getProfilePath(uin), content, 'utf-8');
+  const path = getProfilePath(uin);
+  writeFileSync(path, content, { encoding: 'utf-8', mode: 0o600 });
+  try { chmodSync(path, 0o600); } catch {}
 }
 
 export function deleteProfile(uin: number | string): void {

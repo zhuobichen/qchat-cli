@@ -13,7 +13,7 @@ function getClient(): QZoneClient {
 
 /** 将昵称或 QQ 号解析为 UIN（纯数字直接返回，否则搜索 QZone 好友） */
 async function resolveQzoneUin(client: QZoneClient, input: string, fallbackToSelf = true): Promise<number> {
-  if (/^\d{5,}$/.test(input)) return parseInt(input);
+  if (/^\d{5,12}$/.test(input)) return Number(input);
   try {
     const friends = await client.getFriends();
     const match = friends?.find((f: any) =>

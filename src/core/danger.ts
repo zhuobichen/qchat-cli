@@ -100,7 +100,8 @@ export class DangerGuard {
     
     if (!operation) {
       console.warn(chalk.yellow(`未知操作: ${operationKey}`));
-      return true;
+      auditLogger.fail('未知危险操作', target, { operation: operationKey });
+      return false;
     }
 
     // Bypass 模式跳过确认

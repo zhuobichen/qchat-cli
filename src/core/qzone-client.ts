@@ -5,7 +5,7 @@
  * 认证：独立 QZone 网页扫码登录（与 NapCat 内部会话无关）
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { fetchWithTimeout, retry, logger } from '../utils/index.js';
 
@@ -312,7 +312,8 @@ export class QZoneClient {
   saveCookie(): void {
     if (this.session) {
       mkdirSync(join(import.meta.dirname, '..', '..'), { recursive: true });
-      writeFileSync(COOKIE_FILE, this.session.cookie, 'utf-8');
+      writeFileSync(COOKIE_FILE, this.session.cookie, { encoding: 'utf-8', mode: 0o600 });
+      try { chmodSync(COOKIE_FILE, 0o600); } catch {}
     }
   }
 
@@ -330,7 +331,7 @@ export class QZoneClient {
   async qrLogin(): Promise<QZoneSession> {
     const qr = await getQRCode();
     const qrPath = join(import.meta.dirname, '..', '..', 'qzone-qrcode.png');
-    writeFileSync(qrPath, qr.image);
+    writeFileSync(qrPath, qr.image, { mode: 0o600 });
     console.log(`\n二维码已弹出，请用手机 QQ 扫码...`);
 
     // 自动弹出二维码图片
@@ -356,10 +357,12 @@ export class QZoneClient {
             clearInterval(timer);
             this.initFromCookie(result.cookie);
             this.saveCookie();
+            try { unlinkSync(qrPath); } catch {}
             console.log('登录成功!');
             resolve(this.session!);
           } else if (result.state === LoginState.Expired) {
             clearInterval(timer);
+            try { unlinkSync(qrPath); } catch {}
             reject(new Error('二维码已过期'));
           }
         } catch (e) {

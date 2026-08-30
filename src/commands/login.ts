@@ -49,11 +49,16 @@ export function loginCommand(program: Command): void {
       }
 
       // 更新配置
-      authManager.updateConfig({
-        host: options.host,
-        port: parseInt(options.port),
-        token: options.token,
-      });
+      try {
+        authManager.updateConfig({
+          host: options.host,
+          port: Number(options.port),
+          token: options.token,
+        });
+      } catch (error) {
+        console.log(chalk.red(`配置无效: ${error instanceof Error ? error.message : String(error)}`));
+        return;
+      }
 
       console.log(chalk.green('配置已更新'));
 
