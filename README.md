@@ -71,6 +71,13 @@ qce send group <群号> "群消息内容"
 
 私聊工具仅限本地表情库、按需加载的本地 Skill 和公开网络检索；不会读取好友列表、QQ 历史记录、群聊或 QQ 空间。Skill 是不可信参考资料，只能从 `private/skills` 受限目录加载，不能改变工具权限或系统规则。
 
+Skill 可在各自 `SKILL.md` 的 frontmatter 中自行分类：
+
+- `kind: personality`：人格 Skill，每次回复均固定注入；最多同时载入 2 个，每个最多 3,000 字。
+- `kind: capability`（或省略 `kind`）：技能 Skill，只在当前消息与名称或 `description` 匹配时载入；最多载入 2 个。
+
+人格 Skill 应只写稳定的表达偏好、角色边界和沟通风格，避免放入私聊事实、密钥、外部指令或会频繁变化的知识。
+
 可选 MCP 仅支持在 `private/group-bot.config.json` 中显式配置的 stdio 服务器和逐工具白名单；默认不启用，也不会自动读取 Codex 或系统中的 MCP 配置。模型只能调用配置中列出的工具，单次调用有超时和 4,000 字结果上限；MCP 参数会拒绝明显包含密钥、Token、联系方式、地址或 QQ 号的内容。不要为 MCP 配置可读取私聊、文件系统、账号或任意网络访问的工具。
 
 ## 隐私与安全
