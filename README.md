@@ -89,7 +89,7 @@ qce send group <群号> "群消息内容"
 copy private/group-bot.config.example.json private/group-bot.config.json
 ```
 
-在 `private/group-bot.config.json` 中填入模型服务地址、模型名称和 API Key，然后启动：
+在 `private/group-bot.config.json` 中填入模型服务地址、模型名称和 API Key（推荐使用 `apiKeyEnv` 从环境变量读取，避免将密钥写入文件），然后启动：
 
 ```bash
 qce group-bot start <群号> --auto-reply

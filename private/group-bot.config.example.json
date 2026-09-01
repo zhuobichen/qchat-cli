@@ -1,6 +1,6 @@
 {
   "baseUrl": "https://YOUR-DASHSCOPE-ENDPOINT/compatible-mode/v1",
-  "apiKey": "",
+  "apiKeyEnv": "DASHSCOPE_API_KEY",
   "model": "qwen3.7-flash",
   "maxInputChars": 16000,
   "maxOutputTokens": 400,
@@ -10,6 +10,7 @@
   "maxToolRounds": 3,
   "turnTimeoutMs": 45000,
   "visionModel": "qwen2.5-vl-7b-instruct",
+  "emojiVisionConcurrency": 3,
   "skillDirectory": "private/skills",
   "emojiSourceDirectory": "C:\\path\\to\\personal_emoji\\Ori",
   "mcpServers": []

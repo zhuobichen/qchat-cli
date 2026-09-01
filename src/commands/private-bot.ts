@@ -4,7 +4,7 @@ import { authManager } from '../core/auth.js';
 import { generatePrivateReply, loadGroupBotModelConfig, summarizePrivateMemory, type GroupBotModelConfig } from '../core/group-agent.js';
 import { safetyManager } from '../core/safety.js';
 import { MessageSegment, OneBotEvent } from '../core/onebot-client.js';
-import { PrivateContextStore } from '../core/private-context.js';
+import { PrivateContextStore, privateContextPath, sharedPrivateContextPath } from '../core/private-context.js';
 import { PrivateMemoryStore, SharedPrivateMemoryStore } from '../core/private-memory.js';
 import { PRIVATE_AGENT_TOOLS, PrivateToolRunner } from '../core/private-tools.js';
 import { syncEmojiLibrary } from '../core/emoji-library.js';
@@ -117,7 +117,7 @@ export function privateBotCommand(program: Command): void {
         if (existing) return existing;
         const memoryStore: MemoryStore = mode === 'single' ? new SharedPrivateMemoryStore() : new PrivateMemoryStore(userId);
         const state: AgentState = {
-          contextStore: new PrivateContextStore(),
+          contextStore: new PrivateContextStore(mode === 'single' ? sharedPrivateContextPath() : privateContextPath(userId)),
           memoryStore,
           memory: memoryStore.load(),
           replyQueue: Promise.resolve(),
@@ -183,8 +183,8 @@ export function privateBotCommand(program: Command): void {
       console.log(chalk.dim(`仅响应 QQ：${targetUserIds.join(', ')}。按 Ctrl+C 停止。`));
       console.log(chalk.dim(`每轮最多 ${modelConfig.maxToolCalls} 次工具调用、${modelConfig.maxToolRounds} 个工具回合，单次处理最长 ${Math.round(modelConfig.turnTimeoutMs / 1000)} 秒；MCP 工具 ${mcpTools.length} 个。`));
       console.log(chalk.dim(mode === 'single'
-        ? '该模式会将这些私聊的近期上下文与摘要提供给同一个 Agent；仅在确实需要跨会话协作时使用。'
-        : '每个 QQ 号拥有独立上下文与摘要，不会互相加载。'));
+        ? '该模式会将这些私聊的近期上下文与摘要提供给同一个 Agent，并保存在 private/context/private-shared.json；仅在确实需要跨会话协作时使用。'
+        : '每个 QQ 号拥有独立上下文与摘要，不会互相加载；近期原文和摘要分别存于 private/context/、private/memory/ 中对应 QQ 的文件。'));
       const emojiTimer = setInterval(() => { void syncEmojis(); }, 7 * 24 * 60 * 60_000);
 
       client.on('message_private', (event: OneBotEvent) => {

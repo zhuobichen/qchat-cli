@@ -8,8 +8,6 @@ interface EmojiManifest { version: 1; emojis: EmojiRecord[]; }
 const LIBRARY_DIR = resolve('private/emoji-library');
 const MANIFEST_PATH = resolve(LIBRARY_DIR, 'manifest.json');
 const ALLOWED = new Set(['.jpg', '.jpeg', '.gif', '.png', '.webp']);
-// Keep bulk indexing from competing with live group replies on the same model endpoint.
-const VISION_CONCURRENCY = 1;
 
 function loadManifest(): EmojiManifest {
   try { return JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as EmojiManifest; } catch { return { version: 1, emojis: [] }; }
@@ -70,6 +68,6 @@ export async function syncEmojiLibrary(config: GroupBotModelConfig, progress?: (
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(VISION_CONCURRENCY, pending.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(config.emojiVisionConcurrency, pending.length) }, worker));
   return { added, total: manifest.emojis.length };
 }

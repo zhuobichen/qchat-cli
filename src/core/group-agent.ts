@@ -22,6 +22,7 @@ export interface GroupBotModelConfig {
   historyMessages: number;
   memoryCompactAfterMessages: number;
   visionModel: string;
+  emojiVisionConcurrency: number;
   emojiSourceDirectory: string;
   enableThinking: boolean;
   skillDirectory: string;
@@ -36,21 +37,23 @@ export function loadGroupBotModelConfig(): GroupBotModelConfig {
     throw new Error('缺少 private/group-bot.config.json');
   }
 
-  const raw = JSON.parse(readFileSync(GROUP_BOT_CONFIG_PATH, 'utf-8')) as Partial<GroupBotModelConfig>;
-  if (!raw.baseUrl || !raw.apiKey || !raw.model) throw new Error('群机器人模型配置不完整');
+  const raw = JSON.parse(readFileSync(GROUP_BOT_CONFIG_PATH, 'utf-8')) as Partial<GroupBotModelConfig> & { apiKeyEnv?: string };
+  const apiKey = raw.apiKey || (typeof raw.apiKeyEnv === 'string' ? process.env[raw.apiKeyEnv] : '');
+  if (!raw.baseUrl || !apiKey || !raw.model) throw new Error('群机器人模型配置不完整');
 
   const url = new URL(raw.baseUrl);
   if (url.protocol !== 'https:') throw new Error('模型服务地址必须使用 HTTPS');
 
   return {
     baseUrl: url.toString().replace(/\/$/, ''),
-    apiKey: raw.apiKey.trim(),
+    apiKey: apiKey.trim(),
     model: raw.model.trim(),
     maxInputChars: Math.min(Math.max(raw.maxInputChars || 3_000, 1), 16_000),
     maxOutputTokens: Math.min(Math.max(raw.maxOutputTokens || 400, 1), 1_000),
     historyMessages: Math.min(Math.max(raw.historyMessages || 70, 1), 100),
     memoryCompactAfterMessages: 60,
     visionModel: typeof raw.visionModel === 'string' ? raw.visionModel.trim() : 'qwen2.5-vl-7b-instruct',
+    emojiVisionConcurrency: Math.min(Math.max(raw.emojiVisionConcurrency || 2, 1), 6),
     emojiSourceDirectory: typeof raw.emojiSourceDirectory === 'string' ? raw.emojiSourceDirectory.trim() : '',
     // Thinking is useful for deliberate tasks, but makes a small group bot much slower
     // and can cause compatible endpoints to hold a request open before returning text.
