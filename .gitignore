@@ -12,6 +12,7 @@ private/config.json
 private/group-bot.config.json
 private/skills/
 private/memory/
+private/context/
 private/emoji-library/
 private/locks/
 private/profiles/

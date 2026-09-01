@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { PrivateContextStore } from './private-context.js';
 
@@ -56,5 +59,42 @@ describe('PrivateContextStore', () => {
     expect(store.needsSharedCompaction(3)).toBe(true);
     store.markSharedCompacted(3);
     expect(store.needsSharedCompaction(1)).toBe(false);
+  });
+
+  it('persists recent context to separate local files', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'qchat-private-context-'));
+    const alicePath = join(directory, 'private-1109256353.json');
+    const bobPath = join(directory, 'private-42.json');
+    try {
+      const alice = new PrivateContextStore(alicePath);
+      alice.record(event(8, 'only Alice'));
+      const bob = new PrivateContextStore(bobPath);
+      const bobEvent = { ...event(9, 'only Bob'), user_id: 42, sender: { user_id: 42, nickname: 'Bob' } };
+      bob.record(bobEvent);
+
+      expect(existsSync(alicePath)).toBe(true);
+      expect(new PrivateContextStore(alicePath).buildAgentInput(1109256353, 10, 500)).toContain('only Alice');
+      expect(new PrivateContextStore(alicePath).buildSharedAgentInput(10, 500)).not.toContain('only Bob');
+      expect(new PrivateContextStore(bobPath).buildAgentInput(42, 10, 500)).toContain('only Bob');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('persists shared mode context containing multiple users in one file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'qchat-shared-context-'));
+    const sharedPath = join(directory, 'private-shared.json');
+    try {
+      const store = new PrivateContextStore(sharedPath);
+      store.record(event(10, 'from Alice'));
+      const bobEvent = { ...event(11, 'from Bob'), user_id: 42, sender: { user_id: 42, nickname: 'Bob' } };
+      store.record(bobEvent);
+
+      const restored = new PrivateContextStore(sharedPath);
+      expect(restored.buildSharedAgentInput(10, 500)).toContain('from Alice');
+      expect(restored.buildSharedAgentInput(10, 500)).toContain('from Bob');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
