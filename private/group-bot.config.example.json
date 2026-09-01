@@ -6,7 +6,11 @@
   "maxOutputTokens": 400,
   "enableThinking": true,
   "historyMessages": 70,
+  "maxToolCalls": 4,
+  "maxToolRounds": 3,
+  "turnTimeoutMs": 45000,
   "visionModel": "qwen2.5-vl-7b-instruct",
   "skillDirectory": "private/skills",
-  "emojiSourceDirectory": "C:\\path\\to\\personal_emoji\\Ori"
+  "emojiSourceDirectory": "C:\\path\\to\\personal_emoji\\Ori",
+  "mcpServers": []
 }
