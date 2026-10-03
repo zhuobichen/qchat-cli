@@ -152,6 +152,40 @@ export type OneBotEvent =
   | { post_type: 'meta_event'; meta_event_type: 'heartbeat'; status: { interval: number }; time: number }
   | any;
 
+/**
+ * `fetch_custom_face_detail` 的返回项。
+ *
+ * 字段来自 2026-10-03 对真实账号（uin 1473517806）的实测返回，不是推测。
+ */
+export interface CustomFaceDetail {
+  /** 账号 QQ 号 */
+  uin: string;
+  /** 序号，0 起 */
+  emoId: number;
+  /** QQ 本地存的图片路径（`...\Emoji\personal_emoji\Ori\{MD5}.jpg`） */
+  emoPath: string;
+  isExist: boolean;
+  isThumbExist: boolean;
+  /** 删除时传给 `delete_custom_face` 的 id，形如 `{uin}_0_0_0_{MD5}_0_0` */
+  resId: string;
+  /** 腾讯 CDN 上的原图地址 */
+  url: string;
+  /**
+   * 图片内容的 md5，**大写十六进制**。
+   *
+   * ⚠️ 批量导入的**去重键**就是它——但注意大小写：这里是**大写**，而本地算出来的是小写，
+   * 比对前必须归一化（`face-import.ts` 里两处都做了 `toLowerCase()`）。
+   */
+  md5: string;
+  thumbPath: string;
+  isAPNG: boolean;
+  isMarkFace: boolean;
+  eId: string;
+  epId: string;
+  desc: string;
+  [key: string]: unknown;
+}
+
 export class OneBotClient {
   private baseUrl: string;
   private wsUrl: string;
@@ -319,6 +353,39 @@ export class OneBotClient {
    */
   async getLoginInfo(): Promise<LoginInfo> {
     return this.request<LoginInfo>('get_login_info');
+  }
+
+  /**
+   * 获取收藏表情（自定义表情）列表。
+   *
+   * 用途之一是**导入前查重**——但返回结构未定型（见 `CustomFaceDetail`），
+   * 去重键得实测才知道。
+   */
+  async fetchCustomFaceDetail(count: number = 48): Promise<CustomFaceDetail[]> {
+    return this.request<CustomFaceDetail[]>('fetch_custom_face_detail', { count });
+  }
+
+  /**
+   * 添加一张图片到收藏表情。
+   *
+   * `file` 必须是 **NapCat 进程读得到的本地绝对路径**——不是 URL、不是 base64。
+   * `md5` / `file_size` / `file_name` 不给时由 NapCat 自己读文件算，这里就不传了。
+   */
+  async addCustomFace(file: string, options: { isOrigin?: boolean } = {}): Promise<unknown> {
+    return this.request<unknown>('add_custom_face', {
+      file,
+      is_origin: options.isOrigin ?? true,
+    });
+  }
+
+  /**
+   * 删除收藏表情。`id` 用 `fetchCustomFaceDetail()` 返回里的 resId。
+   *
+   * 这是**回滚**手段：批量导入跑歪了可以拿它撤销。批量删除是写操作，
+   * 命令层要确认后再调。
+   */
+  async deleteCustomFace(id: string | string[]): Promise<unknown> {
+    return this.request<unknown>('delete_custom_face', { id });
   }
 
   /**

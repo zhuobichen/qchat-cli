@@ -13,6 +13,7 @@ private/group-bot.config.json
 private/skills/
 private/memory/
 private/emoji-library/
+private/face-import-ledger.json
 private/locks/
 private/profiles/
 private/DEBUG-LOG.md
