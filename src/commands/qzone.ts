@@ -41,19 +41,29 @@ export function qzoneCommand(program: Command): void {
   qzone
     .command('login')
     .description('扫码登录 QQ 空间')
-    .action(async () => {
+    .option('-f, --force', '已登录也强制重新扫码（用来登录另一个号；旧号的存档不会被覆盖）')
+    .action(async (options: { force?: boolean }) => {
       const client = new QZoneClient();
-      if (client.loadCookie()) {
+
+      // 不带 --force 且当前默认身份已登录时，直接返回（避免误覆盖）
+      if (!options.force && client.loadCookie()) {
         console.log(chalk.green(`已登录 (UIN: ${client.uin})`));
-        console.log('如需重新登录，请先运行 qce qzone logout');
+        console.log('要登录另一个号，用: qce qzone login --force');
+        console.log('要退出当前身份，用: qce qzone logout');
         return;
       }
+
+      if (options.force) {
+        console.log(chalk.gray('已指定 --force，忽略现有登录态，直接重新扫码'));
+      }
+
       try {
         console.log('开始扫码登录...');
         await client.qrLogin();
         const info = await client.getUserInfo();
         console.log(chalk.green(`登录成功! ${info?.data?.nickname || info?.nickname || ''} (${client.uin})`));
         console.log(chalk.gray(`  该身份的登录态已单独存档，之后可用 qce qzone use ${client.uin} 免扫码切换`));
+        console.log(chalk.gray(`  已保存的身份: qce qzone logins`));
       } catch (e: any) {
         console.error(chalk.red('登录失败:'), e.message);
       }
