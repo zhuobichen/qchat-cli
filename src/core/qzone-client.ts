@@ -455,7 +455,12 @@ export class QZoneClient {
 
     return retry(async () => {
       const res = await fetchWithTimeout(u.toString(), opts);
-      const text = await res.text();
+      // 空间部分接口返回 GBK（中文会变乱码），先按 UTF-8 解，出现替换符再退回 GBK
+      const buf = Buffer.from(await res.arrayBuffer());
+      let text = buf.toString('utf8');
+      if (text.includes('\uFFFD')) {
+        try { text = new TextDecoder('gbk').decode(buf); } catch {}
+      }
       const parsed = parseJSONP(text);
 
       if (!parsed || parsed.code === -3000) {
@@ -715,12 +720,34 @@ export class QZoneClient {
     });
     return r?.data?.commentList || [];
   }
-  async getBlogs(uin: number, pos = 0, num = 20) {
+  /**
+   * 获取空间日志列表
+   *
+   * 参数照上游 qzone-go 的写法，缺一不可：
+   *   - `uin` 是登录者自己，目标空间放 `hostUin`；
+   *   - 参数名 camelCase（hostUin / blogType / sortType / absType / reqInfo）；
+   *   - `reqInfo=1`：用 7 会返回 -4003「错误的统计年份」；
+   *   - 条目在 `data.list`，字段也是 camelCase（blogId / pubTime / commentNum）。
+   */
+  async getBlogs(uin: number, pos = 0, num = 15) {
     const r = await this.request(URLS.blogsList, {
-      uin: String(uin), pos: String(pos), num: String(num),
-      format: 'json', g_tk: String(this.session!.gtk2),
+      hostUin: String(uin),
+      uin: String(this.session!.uin),
+      blogType: '0',
+      cateName: '',
+      cateHex: '',
+      reqInfo: '1',
+      pos: String(pos),
+      num: String(num),
+      sortType: '0',
+      absType: '1',
+      source: '0',
+      rand: String(Math.random()),
+      ref: 'qzone',
+      verbose: '1',
+      g_tk: String(this.session!.gtk2),
     });
-    return r?.bloglist || [];
+    return r?.data?.list || [];
   }
   async getLikeCount(unikey: string) {
     return this.request(URLS.likeCount, {
