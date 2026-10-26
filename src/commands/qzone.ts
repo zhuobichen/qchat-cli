@@ -169,6 +169,27 @@ export function qzoneCommand(program: Command): void {
       }
     });
 
+  // qce qzone blogs [uin]
+  qzone
+    .command('blogs')
+    .description('查看空间日志列表')
+    .argument('[uin]', '目标 QQ 号 (默认自己)')
+    .option('-n, --num <num>', '获取数量', '15')
+    .option('-p, --pos <pos>', '起始位置', '0')
+    .action(async (uin: string | undefined, options: { num: string; pos: string }) => {
+      const client = getClient();
+      const target = parseInt(uin || String(client.uin));
+      const blogs = await client.getBlogs(target, parseInt(options.pos), parseInt(options.num));
+      console.log(chalk.bold(`日志列表 (${target === client.uin ? '自己' : target}), 共 ${blogs?.length || 0} 篇`));
+      for (const b of blogs || []) {
+        console.log(`  ${chalk.gray(`[${b.pubTime}]`)} ${b.title}`);
+        console.log(chalk.dim(`    blogId: ${b.blogId}  评论: ${b.commentNum || 0}  分类: ${b.cate || '-'}`));
+      }
+      if (!blogs || blogs.length === 0) {
+        console.log(chalk.gray('  这个号没有日志（接口正常返回 0 篇）'));
+      }
+    });
+
   // qce qzone post <text>
   qzone
     .command('post')
