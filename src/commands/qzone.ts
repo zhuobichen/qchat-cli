@@ -53,9 +53,45 @@ export function qzoneCommand(program: Command): void {
         await client.qrLogin();
         const info = await client.getUserInfo();
         console.log(chalk.green(`登录成功! ${info?.data?.nickname || info?.nickname || ''} (${client.uin})`));
+        console.log(chalk.gray(`  该身份的登录态已单独存档，之后可用 qce qzone use ${client.uin} 免扫码切换`));
       } catch (e: any) {
         console.error(chalk.red('登录失败:'), e.message);
       }
+    });
+
+  // qce qzone logins
+  qzone
+    .command('logins')
+    .description('列出已保存的空间登录身份（可多号并存）')
+    .action(() => {
+      const uins = QZoneClient.listSavedUins();
+      if (uins.length === 0) {
+        console.log(chalk.gray('还没有保存过任何身份，先运行 qce qzone login'));
+        return;
+      }
+      console.log(chalk.bold('已保存的空间身份'));
+      console.log('─'.repeat(40));
+      for (const uin of uins) {
+        console.log(`  ${uin}`);
+      }
+      console.log('─'.repeat(40));
+      console.log(chalk.gray('用 qce qzone use <QQ号> 切换到某个身份（不需要重新扫码）'));
+    });
+
+  // qce qzone use
+  qzone
+    .command('use <uin>')
+    .description('切换到已保存的空间身份（免扫码）')
+    .action((uin: string) => {
+      if (!/^\d{5,12}$/.test(uin)) {
+        console.log(chalk.red('请提供 5-12 位 QQ 号'));
+        return;
+      }
+      if (!QZoneClient.activateCookie(uin)) {
+        console.log(chalk.red(`没有找到 ${uin} 的登录存档，先运行 qce qzone login`));
+        return;
+      }
+      console.log(chalk.green(`已切换到 ${uin}`));
     });
 
   // qce qzone logout
