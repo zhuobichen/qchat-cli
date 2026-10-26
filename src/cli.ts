@@ -15,13 +15,22 @@ import { setupCommand } from './commands/setup.js';
 import { profileCommand } from './commands/profile.js';
 import { groupBotCommand } from './commands/group-bot.js';
 import { faceCommand } from './commands/face.js';
+import { accountCommand } from './commands/account.js';
+import { authManager } from './core/auth.js';
 
 const program = new Command();
 
 program
   .name('qce')
   .description('QQ Chat Exporter CLI - 导出 QQ 聊天记录')
-  .version('0.1.0');
+  .version('0.1.0')
+  .option('--account <name>', '本次命令连接的账号（见 qce account list）');
+
+// 所有子命令执行前解析 --account，让 authManager 面向对应实例
+program.hook('preAction', (_thisCmd, actionCmd) => {
+  const account = actionCmd.optsWithGlobals().account as string | undefined;
+  if (account) authManager.setActiveAccount(account);
+});
 
 // 注册子命令
 loginCommand(program);
@@ -38,5 +47,6 @@ setupCommand(program);
 profileCommand(program);
 groupBotCommand(program);
 faceCommand(program);
+accountCommand(program);
 
 program.parse();
