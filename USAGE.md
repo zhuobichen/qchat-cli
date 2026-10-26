@@ -201,6 +201,37 @@ npx tsx private/qzone-ops.mjs like <配置名>
 | **限流 -10000** | 批量请求间隔 200-300ms，触发后等 15-30 分钟 |
 | **Cookie 过期** | QZone 操作前先 `npx tsx qzone-login.mjs` |
 
+## A.7 多账号（NapCat 多开）
+
+一个账号 = 一个独立 NapCat 实例（目录 + OneBot 端口 + WebUI 端口都独立）+ 一个 qce 命名账号。
+
+```bash
+# 1. 启动新账号的实例（首次需扫码，二维码自动弹出）
+qce napcat start --path ~/.qchat-cli/NapCat.Shell-acc2 --port 3002 --qq <新QQ号>
+
+# 2. 登记为命名账号
+qce account add acc2 --port 3002
+qce account add acc3 --port 3003
+
+# 3. 使用
+qce --account acc2 export <QQ号> --format json   # 单次指定
+qce account use acc2                              # 或改为默认
+qce account list                                  # 查看全部
+```
+
+| 实例 | 目录 | OneBot | WebUI |
+|------|------|--------|-------|
+| main | `~/.qchat-cli/NapCat.Shell` | 3000 | 6099 |
+| acc2 | `~/.qchat-cli/NapCat.Shell-acc2` | 3002 | 6098 |
+| acc3 | `~/.qchat-cli/NapCat.Shell-acc3` | 3003 | 6097 |
+
+注意事项：
+
+- `qce napcat stop` 不带 `--path` 会**杀掉所有实例**；只停一个用 `qce napcat stop --path <目录>`
+- 新实例首次登录后若 OneBot 没绑到目标端口，按提示 `stop --path` + `start --qq` 重启一次即可
+- 3001 端口保留给 qce-bridge，账号实例不要占用
+- 同一 QQ 号不能同时登录两个实例
+
 ---
 
 # Part B: 人类操作手册
