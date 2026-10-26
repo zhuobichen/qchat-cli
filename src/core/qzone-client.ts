@@ -5,7 +5,7 @@
  * 认证：独立 QZone 网页扫码登录（与 NapCat 内部会话无关）
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, chmodSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync, chmodSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { fetchWithTimeout, retry, logger } from '../utils/index.js';
 
@@ -14,6 +14,15 @@ const BASE_URL = 'https://user.qzone.qq.com';
 const H5_BASE = 'https://h5.qzone.qq.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 const COOKIE_FILE = join(import.meta.dirname, '..', '..', '.qzone-cookie');
+
+/**
+ * 按登录身份（QQ 号）分开保存的 cookie
+ *
+ * QZone 的登录态本质是「一个身份 = 一整套 cookie」，所以多号并存就是多份 cookie，
+ * 而不是多个进程。登录成功后除了写默认文件，还按 uin 存一份，
+ * 之后可以用 `qce qzone use <uin>` 切换，不需要重新扫码。
+ */
+const cookieFileForUin = (uin: number | string) => join(import.meta.dirname, '..', '..', `.qzone-cookie.${uin}`);
 const MAX_COMMENTS_LOOP = 100; // 获取评论的最大循环次数，防止无限循环
 
 // ── URLS (from qzone-go urls.go) ──
@@ -296,11 +305,19 @@ export class QZoneClient {
     };
   }
 
-  /** 从保存的文件加载 cookie */
-  loadCookie(): boolean {
+  /**
+   * 从保存的文件加载 cookie
+   * @param uin 指定身份（QQ 号）；给了就优先读该身份专属的那份，不存在则回落默认文件
+   */
+  loadCookie(uin?: number | string): boolean {
+    const candidates = uin
+      ? [cookieFileForUin(uin), COOKIE_FILE]
+      : [COOKIE_FILE];
     try {
-      if (existsSync(COOKIE_FILE)) {
-        const cookie = readFileSync(COOKIE_FILE, 'utf-8').trim();
+      for (const file of candidates) {
+        if (!existsSync(file)) continue;
+        const cookie = readFileSync(file, 'utf-8').trim();
+        if (!cookie) continue;
         this.initFromCookie(cookie);
         return true;
       }
@@ -308,23 +325,61 @@ export class QZoneClient {
     return false;
   }
 
-  /** 保存 cookie 到文件 */
+  /**
+   * 保存 cookie 到文件
+   *
+   * 除了默认文件，还按 uin 存一份，这样多个号的登录态可以并存，
+   * 之后 `qce qzone use <uin>` 直接切，不用重新扫码。
+   */
   saveCookie(): void {
-    if (this.session) {
-      mkdirSync(join(import.meta.dirname, '..', '..'), { recursive: true });
-      writeFileSync(COOKIE_FILE, this.session.cookie, { encoding: 'utf-8', mode: 0o600 });
-      try { chmodSync(COOKIE_FILE, 0o600); } catch {}
+    if (!this.session) return;
+    const dir = join(import.meta.dirname, '..', '..');
+    mkdirSync(dir, { recursive: true });
+    for (const file of [COOKIE_FILE, cookieFileForUin(this.session.uin)]) {
+      try {
+        writeFileSync(file, this.session.cookie, { encoding: 'utf-8', mode: 0o600 });
+        try { chmodSync(file, 0o600); } catch {}
+      } catch {}
     }
   }
 
-  /** 清除登录状态 */
-  clearCookie(): void {
-    this.session = null;
+  /** 列出已保存的登录身份（QQ 号） */
+  static listSavedUins(): number[] {
+    const dir = join(import.meta.dirname, '..', '..');
+    const uins: number[] = [];
     try {
-      if (existsSync(COOKIE_FILE)) {
-        unlinkSync(COOKIE_FILE);
+      for (const name of readdirSync(dir)) {
+        const m = /^\.qzone-cookie\.(\d{5,12})$/.exec(name);
+        if (m) uins.push(Number(m[1]));
       }
     } catch {}
+    return uins.sort((a, b) => a - b);
+  }
+
+  /** 把已保存的某个身份切换为当前默认（不重新扫码） */
+  static activateCookie(uin: number | string): boolean {
+    const from = cookieFileForUin(uin);
+    if (!existsSync(from)) return false;
+    try {
+      const cookie = readFileSync(from, 'utf-8').trim();
+      if (!cookie) return false;
+      writeFileSync(COOKIE_FILE, cookie, { encoding: 'utf-8', mode: 0o600 });
+      try { chmodSync(COOKIE_FILE, 0o600); } catch {}
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 清除登录状态（默认文件；给了 uin 则连带清掉该身份的存档） */
+  clearCookie(uin?: number | string): void {
+    this.session = null;
+    const targets = uin ? [COOKIE_FILE, cookieFileForUin(uin)] : [COOKIE_FILE];
+    for (const file of targets) {
+      try {
+        if (existsSync(file)) unlinkSync(file);
+      } catch {}
+    }
   }
 
   /** 执行完整扫码登录流程 */
