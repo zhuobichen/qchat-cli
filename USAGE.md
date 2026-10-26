@@ -57,7 +57,12 @@ qce monitor start <QQ号> --auto-reply
 ```bash
 # 登录
 qce qzone login                     # 扫码（AI 提示人类操作）
-qce qzone logout                    # 清除
+qce qzone login --force             # 已登录也强制重新扫码（用来登录另一个号）
+qce qzone logout                    # 清除当前默认身份
+
+# 多号并存（登录态按 QQ 号各存一份 .qzone-cookie.<uin>）
+qce qzone logins                    # 列出已保存的身份
+qce qzone use <QQ号>                # 切换到某个身份（免扫码）
 
 # 信息
 qce qzone me                        # 自己空间信息
@@ -81,6 +86,11 @@ qce qzone friends                   # 好友列表
 qce qzone visitors                  # 访客记录
 qce qzone albums [QQ号]            # 相册列表
 ```
+
+> **多个 QQ 号的空间登录态**：`qce qzone login` 成功后除了写默认的 `.qzone-cookie`，
+> 还会按 QQ 号存一份 `.qzone-cookie.<uin>`。要登第二个号就 `qce qzone login --force`
+> （旧号的存档不会被覆盖）；之后 `qce qzone use <uin>` 随时切换，不用反复扫码。
+> 默认文件 `.qzone-cookie` 只表示「当前用的是哪个身份」。
 
 ## A.4 脚本
 
