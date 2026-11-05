@@ -26,3 +26,11 @@ references/
 
 # 本地索引（qce index）
 .qce-index/
+
+# 本地临时/调试产物
+.git-backup-pre-rewrite.bundle
+exprs.txt
+local-qr-*.png
+_acl-report/
+napcat-*.log*
+NUL
