@@ -161,7 +161,7 @@ export function digestCommand(program: Command): void {
           console.log(`  ${formatPlan(plan)}`);
         } else {
           try {
-            const r = spawnSync(plan.bin, plan.args, { encoding: 'utf8' });
+            const r = spawnSync(plan.bin, plan.args, { encoding: 'utf8', env: { ...process.env, ...(plan.env ?? {}) } });
             if (r.status === 0) console.log(chalk.green(`已发送到 ${options.push}`));
             else console.log(chalk.red(`发送失败: ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`));
           } catch (error) {

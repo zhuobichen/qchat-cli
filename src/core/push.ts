@@ -17,6 +17,8 @@ export interface SendTarget {
 export interface SendPlan {
   bin: string;
   args: string[];
+  /** 需要注入给子进程的环境变量（如把 HOME 指到可写目录） */
+  env?: Record<string, string>;
 }
 
 export function buildSendPlan(target: SendTarget): SendPlan {
@@ -27,7 +29,14 @@ export function buildSendPlan(target: SendTarget): SendPlan {
     '--subject', target.subject,
     '--body-file', target.bodyFile,
   ];
-  return { bin, args };
+  const env: Record<string, string> = {};
+  const home = process.env.QCE_AGENTLY_HOME;
+  if (home) {
+    // agently-cli 把凭据写到 $HOME/.agently-cli；受限账户下需要指到可写目录
+    env.HOME = home;
+    env.USERPROFILE = home;
+  }
+  return { bin, args, ...(Object.keys(env).length ? { env } : {}) };
 }
 
 /** 供 --push-dry 打印用 */

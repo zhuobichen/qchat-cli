@@ -14,6 +14,18 @@ describe('buildSendPlan', () => {
     ]);
   });
 
+  it('设置 QCE_AGENTLY_HOME 时注入 HOME/USERPROFILE', () => {
+    const old = process.env.QCE_AGENTLY_HOME;
+    process.env.QCE_AGENTLY_HOME = 'D:/tmp/ah';
+    try {
+      const plan = buildSendPlan({ to: 'a@b.com', subject: 's', bodyFile: 'f.md' });
+      expect(plan.env).toEqual({ HOME: 'D:/tmp/ah', USERPROFILE: 'D:/tmp/ah' });
+    } finally {
+      if (old === undefined) delete process.env.QCE_AGENTLY_HOME;
+      else process.env.QCE_AGENTLY_HOME = old;
+    }
+  });
+
   it('支持用环境变量覆盖可执行文件', () => {
     const old = process.env.AGENTLY_BIN;
     process.env.AGENTLY_BIN = '/opt/agently';

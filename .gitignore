@@ -36,3 +36,5 @@ napcat-*.log*
 NUL
 
 .qce-verify/
+
+.agently-home/
