@@ -87,6 +87,8 @@ qce index --clear                     # 清空索引
 ```bash
 qce search 开会                       # 读本地索引（中文二元组匹配，不用分词）
 qce search 开会 --refresh             # 先增量更新再搜
+qce index 123456789 --embed           # 同时生成语义向量（阿里云百炼 text-embedding-v4）
+qce search 谁写完了论文 --semantic    # 语义检索：问法不必和原文一致
 qce search 报错 -g 123456789 --since 7d
 qce search 论文 --from 10001000 --limit 50 --json
 ```

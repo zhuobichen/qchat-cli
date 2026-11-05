@@ -34,3 +34,5 @@ local-qr-*.png
 _acl-report/
 napcat-*.log*
 NUL
+
+.qce-verify/

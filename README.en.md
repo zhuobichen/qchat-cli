@@ -85,6 +85,8 @@ qce index --clear                     # wipe the index
 ```bash
 qce search 开会                       # reads the local index (CJK bigrams, no tokenizer)
 qce search 开会 --refresh             # update the index first, then search
+qce index 123456789 --embed           # also build semantic vectors (Qwen text-embedding-v4)
+qce search 谁写完了论文 --semantic    # semantic search: wording need not match
 qce search 报错 -g 123456789 --since 7d
 qce search 论文 --from 10001000 --limit 50 --json
 ```

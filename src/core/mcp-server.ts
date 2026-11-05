@@ -91,7 +91,7 @@ export async function handleMessage(backend: McpBackend, message: JsonRpcRequest
       return ok(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'qchat-cli', version: '0.4.0' },
+        serverInfo: { name: 'qchat-cli', version: '0.5.0' },
       });
 
     case 'ping':

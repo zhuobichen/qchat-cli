@@ -4,6 +4,8 @@ import { authManager } from '../core/auth.js';
 import { searchDocs, renderHits, type SearchDoc } from '../core/search-index.js';
 import { fetchGroupMessages, parseDuration } from '../core/history.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
+import { VectorStore } from '../core/vector-store.js';
+import { embedTexts, resolveApiKey } from '../core/embeddings.js';
 
 export function searchCommand(program: Command): void {
   program
@@ -15,6 +17,8 @@ export function searchCommand(program: Command): void {
     .option('-n, --limit <number>', '返回条数', '20')
     .option('--scan <number>', '首次建索引时最多拉取多少条', '1000')
     .option('--refresh', '先从 OneBot 增量更新索引，再搜')
+    .option('--semantic', '语义检索（需 DASHSCOPE_API_KEY，且已用 qce index --embed 建过向量）')
+    .option('--min-score <number>', '语义检索的最低余弦相似度', '0.45')
     .option('--json', '输出 JSON')
     .action(async (query, options) => {
       const store = new MessageStore(defaultIndexRoot());
@@ -73,12 +77,47 @@ export function searchCommand(program: Command): void {
         return;
       }
 
-      const hits = searchDocs(docs, query, {
+      const limit = Number(options.limit) || 20;
+      let hits = searchDocs(docs, query, {
         groupId,
         since: cutoff || undefined,
         senderId: options.from ? Number(options.from) : undefined,
-        limit: Number(options.limit) || 20,
+        limit,
       });
+
+      if (options.semantic) {
+        const apiKey = resolveApiKey();
+        if (!apiKey) {
+          console.log(chalk.yellow('缺少 DASHSCOPE_API_KEY，退回关键词检索'));
+        } else {
+          try {
+            const [queryVec] = await embedTexts([query], { apiKey });
+            const vectors = new VectorStore(defaultIndexRoot());
+            const byId = new Map(docs.map((d) => [d.id, d]));
+            const ranked: typeof hits = [];
+            const groups = groupId !== undefined
+              ? [groupId]
+              : [...new Set(docs.map((d) => d.groupId).filter((g): g is number => typeof g === 'number'))];
+            for (const group of groups) {
+              for (const hit of vectors.search(group, queryVec, limit * 3)) {
+                const doc = byId.get(hit.id);
+                if (!doc) continue;
+                if (cutoff && doc.time < cutoff) continue;
+                if (options.from && doc.senderId !== Number(options.from)) continue;
+                ranked.push({ ...doc, score: hit.score, snippet: doc.text.slice(0, 80) });
+              }
+            }
+            const minScore = Number(options.minScore);
+            const filtered = ranked
+              .filter((h) => h.score >= (Number.isFinite(minScore) ? minScore : 0.45))
+              .sort((a, b) => b.score - a.score);
+            if (filtered.length > 0) hits = filtered.slice(0, limit);
+            else console.log(chalk.yellow(`语义检索无命中（阈值 ${minScore}），本次用关键词结果`));
+          } catch (error) {
+            console.log(chalk.yellow(`语义检索失败（${(error as Error).message}），退回关键词结果`));
+          }
+        }
+      }
 
       if (options.json) {
         console.log(JSON.stringify(hits, null, 2));

@@ -3,6 +3,8 @@ import chalk from 'chalk';
 import { authManager } from '../core/auth.js';
 import { fetchGroupMessages } from '../core/history.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
+import { VectorStore } from '../core/vector-store.js';
+import { embedTexts, resolveApiKey } from '../core/embeddings.js';
 
 function fmt(ts: number): string {
   if (!ts) return '—';
@@ -19,6 +21,7 @@ export function indexCommand(program: Command): void {
     .option('--all', '更新所有已入索引的群')
     .option('--stats', '只看索引概览')
     .option('--clear', '清空索引（配合 group 只清单群）')
+    .option('--embed', '同时生成语义向量（阿里云百炼 text-embedding-v4，需 DASHSCOPE_API_KEY）')
     .option('--json', '输出 JSON')
     .action(async (group, options) => {
       const store = new MessageStore(defaultIndexRoot());
@@ -72,14 +75,32 @@ export function indexCommand(program: Command): void {
         targets = [gid];
       }
 
-      const results: Array<{ groupId: number; added: number; total: number; newest: number }> = [];
+      const wantEmbed = options.embed === true;
+      const apiKey = resolveApiKey();
+      if (wantEmbed && !apiKey) {
+        console.log(chalk.yellow('缺少 DASHSCOPE_API_KEY，本次只建文本索引，不生成向量'));
+      }
+      const vectors = new VectorStore(defaultIndexRoot());
+
+      const results: Array<{ groupId: number; added: number; total: number; newest: number; embedded?: number }> = [];
       for (const gid of targets) {
         try {
           const messages = await fetchGroupMessages(client, gid, { limit });
           const { added, total } = store.merge(gid, messages);
           const newest = store.watermark(gid);
-          results.push({ groupId: gid, added, total, newest });
-          console.log(chalk.green(`群 ${gid}: +${added} 条（共 ${total}）  最新 ${fmt(newest)}`));
+          let embedded = 0;
+          if (wantEmbed && apiKey) {
+            const docs = store.load(gid);
+            const have = vectors.load(gid);
+            const todo = docs.filter((d) => !have.has(d.id));
+            if (todo.length > 0) {
+              const vecs = await embedTexts(todo.map((d) => d.text || '（空消息）'), { apiKey });
+              const r = vectors.upsert(gid, todo.map((d, i) => ({ id: d.id, vec: vecs[i] })));
+              embedded = r.added;
+            }
+          }
+          results.push({ groupId: gid, added, total, newest, ...(wantEmbed ? { embedded } : {}) });
+          console.log(chalk.green(`群 ${gid}: +${added} 条（共 ${total}）  最新 ${fmt(newest)}` + (wantEmbed ? `  向量 +${embedded}` : '')));
         } catch (error) {
           console.log(chalk.red(`群 ${gid} 失败: ${(error as Error).message}`));
         }

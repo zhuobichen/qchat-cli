@@ -2,6 +2,20 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-11-05
+
+### Added
+
+- **语义检索**：`qce index <群号> --embed` 调阿里云百炼 `text-embedding-v4`（OpenAI 兼容端点，与 weflow-cli 同款）为每条消息生成 1024 维向量；`qce search <词> --semantic` 按余弦相似度排序，`--min-score` 控制阈值（默认 0.45）。
+  - `src/core/embeddings.ts`：分批（≤25）+ 失败重试一次 + Float32 ⇄ base64 紧凑存储（17 个单测）
+  - `src/core/vector-store.ts`：按群 JSONL 存向量、同 id 覆盖、top-k 检索（含 5 个 store 单测）
+  - key 通过 `DASHSCOPE_API_KEY`（或 `QCE_DASHSCOPE_KEY`）注入，不落 Git
+- 检索链路降级：缺 key / 向量库为空 / 接口报错 都会明确提示并退回关键词检索，不会静默给空结果。
+
+### Verified
+
+- 真实调用（dim=1024）：`谁写完了论文` → 命中论文消息 0.63；`晚上有什么吃的` → 命中食堂红烧肉 0.47（关键词完全打不中）；`三点在哪集合` → 命中会议室三楼 0.52
+
 ## [0.4.0] - 2026-11-05
 
 ### Added
