@@ -38,9 +38,14 @@ describe('formatPlan', () => {
 });
 
 describe('toRelativeBodyFile', () => {
-  it('转成相对路径并使用正斜杠', () => {
+  it('转成相对路径并使用正斜杠（跨平台）', () => {
     const base = process.cwd();
-    const abs = `${base}\\output\\digest-1-2026-11-05.md`;
+    const abs = join(base, 'output', 'digest-1-2026-11-05.md');
     expect(toRelativeBodyFile(abs, base)).toBe('output/digest-1-2026-11-05.md');
+  });
+
+  it('已经是正斜杠的输入保持不变', () => {
+    const base = process.cwd();
+    expect(toRelativeBodyFile(`${base}/output/a.md`, base)).toBe('output/a.md');
   });
 });
