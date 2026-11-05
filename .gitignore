@@ -7,7 +7,10 @@ pending-messages.json
 monitor-state.json
 .DS_Store
 .qzone-cookie
+.qzone-cookie*
 qzone-qrcode*.png
+_seed/
+napcat-boot.log*
 private/config.json
 private/group-bot.config.json
 private/skills/
