@@ -114,7 +114,19 @@ qce group-bot start <group> --auto-reply # isolated single-group bot: only speak
 qce private-bot start <qq>               # private-chat auto-reply (single / split agent modes)
 ```
 
-**5) Automation & ops**
+**5) Keyword alerts** — get pinged in QQ when a group message matches
+
+```bash
+qce alert add 报错 --to 10001000 --group 123456789   # add a rule
+qce alert add "招聘|内推" --to 10001000 --regex       # regex across all groups
+qce alert list && qce alert remove 报错               # list / remove
+qce alert run --since 2h                              # run once (cron-friendly)
+qce alert run --offline --dry --since 1h              # offline dry run
+```
+
+Each message notifies at most once (tracked per rule + message id), with an optional cooldown; sending goes through the `safety` allowlist.
+
+**6) Automation & ops**
 
 ```bash
 qce send group <group> "..."             # requires `qce safety enable` + allowlist first

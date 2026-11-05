@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 2026-11-05
+
+### Added
+
+- **`qce alert` 关键词告警**：`add` / `list` / `remove` / `run`，支持关键词与正则、按群限定、冷却窗口、`--offline` 离线扫描、`--dry` 预演。
+  - 命中后把「群 + 发送者 + 原文片段」发到指定 QQ（走 `safety` 白名单）
+  - 幂等：按「规则 id + 消息 id」记录，重启/重复执行不会重复提醒
+  - 规则与状态存 `~/.qchat-cli/index/alerts.json`（`AlertStore`，14 个单测）
+
+### Verified
+
+- 真机链路：索引造 3 条消息 → 两条规则命中 → 实际发出 2 条 QQ 提醒 → 再跑一次「无命中」（幂等成立）
+- `vitest run src`：11 文件 / **103 用例**
+- `tsc` 通过
+
 ## [0.6.0] - 2026-11-05
 
 ### Added

@@ -116,7 +116,19 @@ qce group-bot start <群号> --auto-reply  # 单群隔离：只在被 @ 时说�
 qce private-bot start <QQ号>             # 私聊自动回复（single / split 两种模式）
 ```
 
-**5）自动化与运维**
+**5）关键词告警** —— 群消息命中就提醒到你的 QQ
+
+```bash
+qce alert add 报错 --to 10001000 --group 123456789   # 新增规则
+qce alert add "招聘|内推" --to 10001000 --regex       # 正则 + 全群
+qce alert list && qce alert remove 报错               # 查看 / 删除
+qce alert run --since 2h                              # 跑一次（可配 cron / 计划任务）
+qce alert run --offline --dry --since 1h              # 离线预演，不发送
+```
+
+同一条消息不会重复提醒（按「规则 + 消息 id」记录），可设冷却窗口；发送走 `safety` 白名单。
+
+**6）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）
