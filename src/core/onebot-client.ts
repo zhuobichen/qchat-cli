@@ -624,9 +624,34 @@ export class OneBotClient {
    * 获取群文件列表
    */
   async getGroupFileList(groupId: number, folder: string = ''): Promise<GroupFileInfo> {
-    return this.request('get_group_file_list', {
+    // NapCat / OneBot 扩展里没有 get_group_file_list：根目录用 get_group_root_files，
+    // 子目录用 get_group_files_by_folder。这里统一归一化成 GroupFileInfo。
+    const action = folder === '' ? 'get_group_root_files' : 'get_group_files_by_folder';
+    const params = folder === '' ? { group_id: groupId } : { group_id: groupId, folder_id: folder };
+    const raw: any = await this.request(action, params);
+    const list: any[] = Array.isArray(raw?.files) ? raw.files : [];
+    const files: FileInfo[] = list.map((f) => ({
+      size: Number(f.file_size ?? f.size ?? 0),
+      name: String(f.file_name ?? f.name ?? ''),
+      fid: String(f.file_id ?? f.fid ?? ''),
+      busid: Number(f.busid ?? 0),
+    }));
+    return {
       group_id: groupId,
-      folder,
+      file_count: files.length,
+      total_size: files.reduce((sum, f) => sum + f.size, 0),
+      files,
+    };
+  }
+
+  /**
+   * 获取群文件下载地址（OneBot 扩展接口，部分实现不支持）
+   */
+  async getGroupFileUrl(groupId: number, fileId: string, busid: number = 0): Promise<{ url: string }> {
+    return this.request('get_group_file_url', {
+      group_id: groupId,
+      file_id: fileId,
+      busid,
     });
   }
 

@@ -127,7 +127,16 @@ qce alert run --offline --dry --since 1h              # offline dry run
 
 Each message notifies at most once (tracked per rule + message id), with an optional cooldown; sending goes through the `safety` allowlist.
 
-**6) Automation & ops**
+**6) Group files**
+
+```bash
+qce files list 123456789              # list files (count/size/name)
+qce files search 课件                  # search across groups by filename
+qce files stats 123456789             # size breakdown by extension
+qce files download 123456789 课件1.pdf -o ./downloads
+```
+
+**7) Automation & ops**
 
 ```bash
 qce send group <group> "..."             # requires `qce safety enable` + allowlist first

@@ -129,7 +129,17 @@ qce alert run --offline --dry --since 1h              # 离线预演，不发送
 
 同一条消息不会重复提醒（按「规则 + 消息 id」记录），可设冷却窗口；发送走 `safety` 白名单。
 
-**6）自动化与运维**
+**6）群文件**
+
+```bash
+qce files list 123456789              # 列文件（数量/大小/文件名）
+qce files search 课件                  # 跨群按文件名搜
+qce files search .pdf --ext pdf -g 123456789
+qce files stats 123456789             # 体积按扩展名分布
+qce files download 123456789 课件1.pdf -o ./downloads
+```
+
+**7）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）

@@ -2,6 +2,24 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.9.0] - 2026-11-05
+
+### Added
+
+- **`qce files` 群文件**：`list` / `search` / `download` / `stats`
+  - 跨群按文件名搜索（大小写不敏感）、按扩展名与体积过滤
+  - 体积按扩展名分布统计；下载按「文件名或 fid」定位，模糊匹配多个时拒绝猜测
+  - `src/core/group-files.ts`（纯函数，16 个单测）
+
+### Fixed
+
+- `getGroupFileList` 用错了 API：OneBot/NapCat 没有 `get_group_file_list`，改为根目录 `get_group_root_files`、子目录 `get_group_files_by_folder`，并归一化 `file_id/file_name/file_size → fid/name/size`。
+
+### Known limitation
+
+- 下载依赖 `get_group_file_url`，NapCat 未启用 packetBackend 时会返回「packetBackend 不可用」；命令会给出明确提示而不是静默失败。
+- 本机账号当前 0 个群，`files list` 的真实群数据未能端到端验证（已确认请求打到了正确的内核接口）。
+
 ## [0.8.0] - 2026-11-05
 
 ### Added
