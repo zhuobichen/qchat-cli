@@ -5,6 +5,8 @@ import { loginCommand } from './commands/login.js';
 import { listCommand } from './commands/list.js';
 import { exportCommand } from './commands/export.js';
 import { digestCommand } from './commands/digest.js';
+import { searchCommand } from './commands/search.js';
+import { mcpCommand } from './commands/mcp.js';
 import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
@@ -25,7 +27,7 @@ const program = new Command();
 program
   .name('qce')
   .description('QQ Chat Exporter CLI - 导出 QQ 聊天记录')
-  .version('0.2.0')
+  .version('0.3.0')
   .option('--account <name>', '本次命令连接的账号（见 qce account list）');
 
 // 所有子命令执行前解析 --account，让 authManager 面向对应实例
@@ -39,6 +41,8 @@ loginCommand(program);
 listCommand(program);
 exportCommand(program);
 digestCommand(program);
+searchCommand(program);
+mcpCommand(program);
 backupCommand(program);
 sendCommand(program);
 monitorCommand(program);

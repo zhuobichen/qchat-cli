@@ -52,7 +52,7 @@ $ qce export 123456789 --format md
 
 真实输出（节选自本机运行）：导出会保留时间、发言人、正文，并把图片/表情/语音转成占位符，直接可读。
 
-## 三种典型用法
+## 四种典型用法
 
 **1）导出归档** —— JSON / TXT / HTML / CSV / Markdown，支持时间范围与条数限制
 
@@ -71,7 +71,27 @@ qce digest 123456789 --limit 2000 --stdout   # 同时打印到终端
 
 产出：消息量 / 参与人数 / 谁说得最多 / 24 小时活跃分布（柱状图）/ 值得回看的长文·链接·点名·附件 / 分享过的链接；加 `--ai` 再由模型补 3–5 条要点（用 `private/group-bot.config.json` 里的模型，无需额外配置）。
 
-**3）实时监听 + AI 回复**（需要模型 API Key，本地私密配置）
+**3）本地搜索 + MCP 接入**
+
+```bash
+qce search 开会                       # 全群搜（中文二元组匹配，不用分词）
+qce search 报错 -g 123456789 --since 7d
+qce search 论文 --from 10001000 --limit 50 --json
+```
+
+接进 Claude Code / Cursor（MCP，stdio）：
+
+```json
+{
+  "mcpServers": {
+    "qchat": { "command": "qce", "args": ["mcp"] }
+  }
+}
+```
+
+暴露三个只读工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）。模型可以在编辑器里直接问"上周群里谁提过这个报错"。
+
+**4）实时监听 + AI 回复**（需要模型 API Key，本地私密配置）
 
 ```bash
 qce ws-monitor start                     # 实时事件流
@@ -79,7 +99,7 @@ qce group-bot start <群号> --auto-reply  # 单群隔离：只在被 @ 时说�
 qce private-bot start <QQ号>             # 私聊自动回复（single / split 两种模式）
 ```
 
-**4）自动化与运维**
+**5）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）

@@ -70,7 +70,27 @@ qce digest 123456789 --days 1 --ai    # today only, plus an LLM summary
 
 Output: message count, participants, most active members, 24-hour activity histogram, messages worth revisiting (long posts, links, mentions, attachments), shared links — plus an optional 3–5 bullet LLM summary using the model configured in `private/group-bot.config.json`.
 
-**3) Real-time watch + AI replies**
+**3) Local search + MCP**
+
+```bash
+qce search 开会                       # search across groups (CJK bigrams, no tokenizer needed)
+qce search 报错 -g 123456789 --since 7d
+qce search 论文 --from 10001000 --limit 50 --json
+```
+
+Plug it into Claude Code / Cursor (MCP over stdio):
+
+```json
+{
+  "mcpServers": {
+    "qchat": { "command": "qce", "args": ["mcp"] }
+  }
+}
+```
+
+Three read-only tools: `search_messages`, `group_digest`, `list_groups` — so your editor can answer "who mentioned this error in the group last week".
+
+**4) Real-time watch + AI replies**
 
 ```bash
 qce ws-monitor start                     # live event stream
@@ -78,7 +98,7 @@ qce group-bot start <group> --auto-reply # isolated single-group bot: only speak
 qce private-bot start <qq>               # private-chat auto-reply (single / split agent modes)
 ```
 
-**4) Automation & ops**
+**5) Automation & ops**
 
 ```bash
 qce send group <group> "..."             # requires `qce safety enable` + allowlist first

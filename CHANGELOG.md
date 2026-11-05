@@ -2,6 +2,20 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-11-05
+
+### Added
+
+- **`qce search` 本地检索**：中文按二元组切分（不依赖分词词典），支持 `--group` / `--since 7d` / `--from` / `--limit` / `--json`，输出带上下文片段。
+  - 纯函数核心 `src/core/search-index.ts`（16 个单测），公共拉取模块 `src/core/history.ts`（分页 + 去重 + 消息段拍平，digest / search / mcp 共用）
+- **`qce mcp` MCP server**（stdio，newline-delimited JSON-RPC）：暴露三个只读工具 `search_messages` / `group_digest` / `list_groups`，可直接接 Claude Code、Cursor 等客户端。
+  - 协议处理与数据源解耦（`McpBackend` 注入），10 个单测覆盖 initialize / tools / 错误路径 / 通知不回包
+  - stdout 只输出 JSON-RPC，日志一律走 stderr
+
+### Changed
+
+- README（中/英）新增「本地搜索 + MCP 接入」用法与客户端配置示例。
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
