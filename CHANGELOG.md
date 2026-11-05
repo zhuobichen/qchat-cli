@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-11-05
+
+### Added
+
+- **本地增量索引 `qce index`**：把群消息落到 `~/.qchat-cli/index/group-<id>.jsonl`，按 message_id 去重、按时间排序；`--all` 批量更新、`--stats` 看概览、`--clear` 清空。
+  - `MessageStore`（`src/core/message-store.ts`，7 个单测）；主目录不可写时自动退到工作目录 `./.qce-index`，不会直接崩
+- **`qce search` 改读本地索引**：命中毫秒级，`--refresh` 才联网增量更新；首次无索引时自动建。
+- **`qce digest --push <email>`**：日报生成后直接发邮件，走本机 `agently-cli`（`--push-dry` 只打印命令）。
+  - 参数构造抽成 `src/core/push.ts`（纯函数，5 个单测）
+- MCP 的 `search_messages` 改为读本地索引，`group_digest` 拉取时顺带入索引。
+
+### Changed
+
+- 索引目录可用 `QCE_INDEX_DIR` 覆盖；`.qce-index/` 已加入忽略列表。
+
 ## [0.3.0] - 2026-11-05
 
 ### Added

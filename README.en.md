@@ -66,14 +66,25 @@ qce export --all --format json
 ```bash
 qce digest 123456789                  # last 500 messages -> output/digest-<id>-<date>.md
 qce digest 123456789 --days 1 --ai    # today only, plus an LLM summary
+qce digest 123456789 --push me@qq.com # email the digest (local agently-cli, needs auth login)
 ```
 
 Output: message count, participants, most active members, 24-hour activity histogram, messages worth revisiting (long posts, links, mentions, attachments), shared links — plus an optional 3–5 bullet LLM summary using the model configured in `private/group-bot.config.json`.
 
-**3) Local search + MCP**
+**3) Local index + search + MCP**
+
+Index once, then search is millisecond-fast (no more re-pulling history):
 
 ```bash
-qce search 开会                       # search across groups (CJK bigrams, no tokenizer needed)
+qce index 123456789                   # build / incrementally update one group
+qce index --all --limit 2000          # update every indexed group
+qce index --stats                     # counts and newest timestamp per group
+qce index --clear                     # wipe the index
+```
+
+```bash
+qce search 开会                       # reads the local index (CJK bigrams, no tokenizer)
+qce search 开会 --refresh             # update the index first, then search
 qce search 报错 -g 123456789 --since 7d
 qce search 论文 --from 10001000 --limit 50 --json
 ```

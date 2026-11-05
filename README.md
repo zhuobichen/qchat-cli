@@ -67,14 +67,26 @@ qce export --all --format json           # 全量会话
 qce digest 123456789                    # 最近 500 条 → output/digest-<群号>-<日期>.md
 qce digest 123456789 --days 1 --ai      # 只看今天，并调用模型生成要点摘要
 qce digest 123456789 --limit 2000 --stdout   # 同时打印到终端
+qce digest 123456789 --push me@qq.com   # 生成后直接发邮件（用本机 agently-cli，需先 auth login）
+qce digest 123456789 --push me@qq.com --push-dry   # 只打印将执行的发信命令
 ```
 
 产出：消息量 / 参与人数 / 谁说得最多 / 24 小时活跃分布（柱状图）/ 值得回看的长文·链接·点名·附件 / 分享过的链接；加 `--ai` 再由模型补 3–5 条要点（用 `private/group-bot.config.json` 里的模型，无需额外配置）。
 
-**3）本地搜索 + MCP 接入**
+**3）本地索引 + 搜索 + MCP 接入**
+
+索引先落盘，搜索就是毫秒级（不再每次重拉历史）：
 
 ```bash
-qce search 开会                       # 全群搜（中文二元组匹配，不用分词）
+qce index 123456789                   # 建/增量更新某个群的索引
+qce index --all --limit 2000          # 更新所有已入索引的群
+qce index --stats                     # 看各群条数与最新时间
+qce index --clear                     # 清空索引
+```
+
+```bash
+qce search 开会                       # 读本地索引（中文二元组匹配，不用分词）
+qce search 开会 --refresh             # 先增量更新再搜
 qce search 报错 -g 123456789 --since 7d
 qce search 论文 --from 10001000 --limit 50 --json
 ```

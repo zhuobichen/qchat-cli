@@ -4,19 +4,27 @@ import { runStdioServer, type McpBackend } from '../core/mcp-server.js';
 import { fetchGroupMessages } from '../core/history.js';
 import { searchDocs } from '../core/search-index.js';
 import { buildDigest } from '../core/digest.js';
+import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 
 /**
  * 把 OneBot 客户端包装成 MCP backend。
  * 每个工具都只做只读查询，不发送、不修改任何东西。
+ * 搜索优先读本地索引；索引为空时按需拉一次并落盘。
  */
 function makeBackend(): McpBackend {
   const client = authManager.getClient();
+  const store = new MessageStore(defaultIndexRoot());
+
   return {
     async search({ query, groupId, limit, since }) {
-      const scan = 1000;
-      const docs = groupId
-        ? await fetchGroupMessages(client, groupId, { limit: scan, cutoff: since ?? 0 })
-        : [];
+      const cutoff = since ?? 0;
+
+      if (groupId !== undefined && store.load(groupId).length === 0) {
+        const messages = await fetchGroupMessages(client, groupId, { limit: 1000, cutoff });
+        store.merge(groupId, messages);
+      }
+
+      const docs = groupId !== undefined ? store.load(groupId) : store.loadAll();
       const hits = searchDocs(docs, query, { groupId, limit: limit ?? 20, since });
       return hits.map((h) => ({
         time: new Date(h.time * 1000).toISOString(),
@@ -31,6 +39,8 @@ function makeBackend(): McpBackend {
     async digest({ groupId, limit, days }) {
       const cutoff = days ? Math.floor(Date.now() / 1000) - days * 86400 : 0;
       const messages = await fetchGroupMessages(client, groupId, { limit: limit ?? 500, cutoff });
+      // 顺带把拉到的消息并入索引，后续搜索更快
+      store.merge(groupId, messages);
       const digest = buildDigest(
         messages.map((m) => ({ time: m.time, senderId: m.senderId, senderName: m.senderName, text: m.text })),
         { title: `群 ${groupId} 日报` },

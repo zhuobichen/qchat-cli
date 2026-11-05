@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { spawnSync } from 'node:child_process';
+import { buildSendPlan, formatPlan, toRelativeBodyFile } from '../core/push.js';
 import { join } from 'path';
 import { authManager } from '../core/auth.js';
 import { buildDigest, renderDigestMarkdown, type DigestMessage } from '../core/digest.js';
@@ -66,6 +68,8 @@ export function digestCommand(program: Command): void {
     .option('-o, --output <path>', '输出目录', './output')
     .option('--ai', '调用 private/group-bot.config.json 里的模型生成 AI 摘要')
     .option('--stdout', '同时打印到终端')
+    .option('--push <email>', '把日报发到这个邮箱（调用本机 agently-cli，需已登录）')
+    .option('--push-dry', '只打印将要执行的发信命令，不真的发送')
     .action(async (session, options) => {
       if (!authManager.isConfigured()) {
         console.log(chalk.red('请先配置 NapCatQQ 连接'));
@@ -145,6 +149,27 @@ export function digestCommand(program: Command): void {
 
       console.log(chalk.green('日报已生成!'));
       console.log(`  文件: ${file}`);
+
+      if (options.push) {
+        const plan = buildSendPlan({
+          to: String(options.push),
+          subject: `群日报 ${groupId} ${new Date().toISOString().slice(0, 10)}`,
+          bodyFile: toRelativeBodyFile(file),
+        });
+        if (options.pushDry) {
+          console.log(chalk.cyan('发信命令（未执行）:'));
+          console.log(`  ${formatPlan(plan)}`);
+        } else {
+          try {
+            const r = spawnSync(plan.bin, plan.args, { encoding: 'utf8' });
+            if (r.status === 0) console.log(chalk.green(`已发送到 ${options.push}`));
+            else console.log(chalk.red(`发送失败: ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`));
+          } catch (error) {
+            console.log(chalk.red(`发送失败: ${(error as Error).message}`));
+          }
+        }
+      }
+
       console.log(`  消息: ${digest.total} 条 / ${digest.participants} 人`);
       digest.speakers.slice(0, 3).forEach((s) => console.log(chalk.dim(`  ${s.name}: ${s.count} 条`)));
     });

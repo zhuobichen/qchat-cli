@@ -23,3 +23,6 @@ private/profiles/
 private/DEBUG-LOG.md
 references/
 .tmp-vitest/
+
+# 本地索引（qce index）
+.qce-index/
