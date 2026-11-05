@@ -15,6 +15,8 @@
 
 </div>
 
+![qce 终端演示](./docs/images/demo.png)
+
 `qce` 是一个跑在你自己电脑上的 QQ 命令行工具。它不做“点一下导出”的按钮，而是把 QQ 账号变成一个**可编程的数据源**：导出可读的聊天记录、实时监听消息、按规则自动回复、把群聊接进 AI，也能做群管理和 QQ 空间的事。
 
 ## 它能回答 QQ 回答不了的几个问题
@@ -85,6 +87,16 @@ qce safety allow <QQ号或群号>
 ## 安装
 
 需要 Node.js 18+，以及一个已登录的 NapCat / OneBot 11 服务。
+
+**还没装 NapCat？一条命令起一个（Docker）：**
+
+```bash
+cp .env.example .env      # 改掉 WEBUI_TOKEN；Linux 下把 UID/GID 改成 id -u / id -g
+docker compose up -d
+docker logs -f napcat     # 看二维码，手机 QQ 扫码登录
+```
+
+起好之后（`127.0.0.1:3000` 是 OneBot，`127.0.0.1:6099` 是 WebUI），再装 `qce`：
 
 ```bash
 git clone https://github.com/zhuobichen/qchat-cli.git
