@@ -20,14 +20,25 @@ const DEFAULT_CONFIG: SafetyConfig = {
   allowSending: false,
 };
 
-export class SafetyManager {
-  private config: Conf<SafetyConfig>;
+/**
+ * SafetyManager 只依赖这个最小存储接口。
+ * 注入实现是为了让权限判定可以被测试，而不是每次跑测试都改用户真实配置。
+ */
+export interface SafetyStore {
+  get<K extends keyof SafetyConfig>(key: K): SafetyConfig[K];
+  set<K extends keyof SafetyConfig>(key: K, value: SafetyConfig[K]): void;
+}
 
-  constructor() {
-    this.config = new Conf<SafetyConfig>({
-      projectName: 'qchat-cli',
-      defaults: DEFAULT_CONFIG,
-    });
+export class SafetyManager {
+  private config: SafetyStore;
+
+  constructor(store?: SafetyStore) {
+    this.config =
+      store ??
+      (new Conf<SafetyConfig>({
+        projectName: 'qchat-cli',
+        defaults: DEFAULT_CONFIG,
+      }) as unknown as SafetyStore);
   }
 
   /**
