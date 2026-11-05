@@ -118,10 +118,15 @@ export function qzoneCommand(program: Command): void {
   qzone
     .command('me')
     .description('查看自己的 QQ 空间信息')
-    .action(async () => {
+    .option('--json', '输出 JSON')
+    .action(async (options: { json?: boolean } = {}) => {
       const client = getClient();
       const info = await client.getUserInfo();
       const d = info?.data || info;
+      if (options.json) {
+        console.log(JSON.stringify({ uin: client.uin, data: d ?? null }, null, 2));
+        return;
+      }
       console.log(chalk.bold('用户信息'));
       console.log(`  昵称:    ${d?.nickname || '(未设置)'}`);
       console.log(`  空间名:  ${d?.spacename || '(未设置)'}`);
@@ -156,10 +161,17 @@ export function qzoneCommand(program: Command): void {
     .argument('[uin]', '目标 QQ 号 (默认自己)')
     .option('-n, --num <num>', '获取数量', '10')
     .option('-p, --pos <pos>', '起始位置', '0')
-    .action(async (uin: string | undefined, options: { num: string; pos: string }) => {
+    .option('--json', '输出 JSON（给下游程序用，字段原样透传）')
+    .action(async (uin: string | undefined, options: { num: string; pos: string; json?: boolean }) => {
       const client = getClient();
       const target = parseInt(uin || String(client.uin));
       const feeds = await client.getFeeds(target, parseInt(options.pos), parseInt(options.num));
+      if (options.json) {
+        // 约定：{ uin, pos, num, count, items }。items 是接口原样返回的 msglist 元素，
+        // 含 content/createTime/tid/commentlist 等字段（getFeeds 已带 need_comment=1）
+        console.log(JSON.stringify({ uin: target, pos: Number(options.pos), num: Number(options.num), count: feeds?.length || 0, items: feeds || [] }, null, 2));
+        return;
+      }
       console.log(chalk.bold(`说说列表 (${target === client.uin ? '自己' : target}), 共 ${feeds?.length || 0} 条`));
       for (const f of feeds || []) {
         const time = f.createTime || f.created_time || '';
@@ -176,10 +188,15 @@ export function qzoneCommand(program: Command): void {
     .argument('[uin]', '目标 QQ 号 (默认自己)')
     .option('-n, --num <num>', '获取数量', '15')
     .option('-p, --pos <pos>', '起始位置', '0')
-    .action(async (uin: string | undefined, options: { num: string; pos: string }) => {
+    .option('--json', '输出 JSON（给下游程序用，字段原样透传）')
+    .action(async (uin: string | undefined, options: { num: string; pos: string; json?: boolean }) => {
       const client = getClient();
       const target = parseInt(uin || String(client.uin));
       const blogs = await client.getBlogs(target, parseInt(options.pos), parseInt(options.num));
+      if (options.json) {
+        console.log(JSON.stringify({ uin: target, pos: Number(options.pos), num: Number(options.num), count: blogs?.length || 0, items: blogs || [] }, null, 2));
+        return;
+      }
       console.log(chalk.bold(`日志列表 (${target === client.uin ? '自己' : target}), 共 ${blogs?.length || 0} 篇`));
       for (const b of blogs || []) {
         console.log(`  ${chalk.gray(`[${b.pubTime}]`)} ${b.title}`);
@@ -294,10 +311,15 @@ export function qzoneCommand(program: Command): void {
     .argument('<tid>', '说说 TID')
     .argument('[uin]', '说说所有者的 QQ 号 (默认自己)')
     .option('-n, --num <num>', '获取数量', '20')
-    .action(async (tid: string, uin: string | undefined, options: { num: string }) => {
+    .option('--json', '输出 JSON（给下游程序用）')
+    .action(async (tid: string, uin: string | undefined, options: { num: string; json?: boolean }) => {
       const client = getClient();
       const target = parseInt(uin || String(client.uin));
       const comments = await client.getMessageComments(target, tid, 0, parseInt(options.num));
+      if (options.json) {
+        console.log(JSON.stringify({ uin: target, tid, count: comments?.length || 0, items: comments || [] }, null, 2));
+        return;
+      }
       console.log(chalk.bold(`评论列表 (共 ${comments?.length || 0} 条)`));
       for (const c of comments || []) {
         const id = c.id || c.tid || '';
