@@ -8,6 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
 [![OneBot](https://img.shields.io/badge/OneBot-11-2496ed)](https://github.com/botuniverse/onebot-11)
 [![NapCat](https://img.shields.io/badge/NapCat-QQNT-ff6b6b)](https://github.com/NapNeko/NapCatQQ)
+[![Release](https://img.shields.io/github/v/release/zhuobichen/qchat-cli?sort=semver)](https://github.com/zhuobichen/qchat-cli/releases)
 [![License](https://img.shields.io/badge/License-MIT-f4b400)](./LICENSE)
 [![Local-first](https://img.shields.io/badge/local--first-zero%20telemetry-8a2be2)](#privacy--security)
 
