@@ -41,3 +41,5 @@ NUL
 .qce-verify2/
 .qce-appdata/
 .qce-alert/
+.ocr-test/
+.qce-ocr-tmp/

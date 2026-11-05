@@ -2,6 +2,24 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.8.0] - 2026-11-05
+
+### Added
+
+- **`qce index --ocr`：图片转文字入库**。消息里的图片段通过 OneBot `get_image` 取回，用本机 `rapidocr_onnxruntime`（CPU、中文）识别，生成 `ocr:<消息id>:<序号>` 的合成消息并入索引 —— 之后 `search` / `digest` / `--semantic` 都能检索到图里的文字。
+  - `src/core/ocr.ts`（委托 Python `scripts/ocr_image.py`，含 10 个单测）
+  - 幂等：合成消息 id 固定，重复跑不会重复入库
+  - 容错：单张图取不到 / OCR 失败都跳过，不中断整批
+
+### Fixed
+
+- `scripts/ocr_image.py` 强制 stdout 为 UTF-8：Windows 下 Python 默认 GBK 会把中文写成替换符
+
+### Verified
+
+- 真实图片（PIL 生成的「明天下午三点开会 / 会议室在三楼 302」）→ OCR 出 2 行，码点校验为正确中文（`0x660e 明天下午三点…`）
+- `vitest run src`：12 文件 / **113 用例**；`tsc` 通过
+
 ## [0.7.0] - 2026-11-05
 
 ### Added
