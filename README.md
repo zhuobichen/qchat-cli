@@ -60,7 +60,17 @@ qce export <群号或QQ号> --format md --limit 500
 qce export --all --format json           # 全量会话
 ```
 
-**2）实时监听 + AI 回复**（需要模型 API Key，本地私密配置）
+**2）群日报 —— 把一段群聊压成一页**
+
+```bash
+qce digest 123456789                    # 最近 500 条 → output/digest-<群号>-<日期>.md
+qce digest 123456789 --days 1 --ai      # 只看今天，并调用模型生成要点摘要
+qce digest 123456789 --limit 2000 --stdout   # 同时打印到终端
+```
+
+产出：消息量 / 参与人数 / 谁说得最多 / 24 小时活跃分布（柱状图）/ 值得回看的长文·链接·点名·附件 / 分享过的链接；加 `--ai` 再由模型补 3–5 条要点（用 `private/group-bot.config.json` 里的模型，无需额外配置）。
+
+**3）实时监听 + AI 回复**（需要模型 API Key，本地私密配置）
 
 ```bash
 qce ws-monitor start                     # 实时事件流
@@ -68,7 +78,7 @@ qce group-bot start <群号> --auto-reply  # 单群隔离：只在被 @ 时说�
 qce private-bot start <QQ号>             # 私聊自动回复（single / split 两种模式）
 ```
 
-**3）自动化与运维**
+**4）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）

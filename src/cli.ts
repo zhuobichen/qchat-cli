@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { loginCommand } from './commands/login.js';
 import { listCommand } from './commands/list.js';
 import { exportCommand } from './commands/export.js';
+import { digestCommand } from './commands/digest.js';
 import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
@@ -37,6 +38,7 @@ program.hook('preAction', (_thisCmd, actionCmd) => {
 loginCommand(program);
 listCommand(program);
 exportCommand(program);
+digestCommand(program);
 backupCommand(program);
 sendCommand(program);
 monitorCommand(program);
