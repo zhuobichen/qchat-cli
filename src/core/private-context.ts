@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { wrapUntrusted, UNTRUSTED_CONTENT_RULE } from './injection-guard.js';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { MessageSegment, OneBotEvent } from './onebot-client.js';
@@ -110,7 +111,11 @@ export class PrivateContextStore {
 
   buildAgentInput(userId: number, limit: number, maxChars: number): string {
     const content = this.format((this.messages.get(userId) || []).slice(-limit));
-    return content.length > maxChars ? content.slice(-maxChars) : content;
+    const capped = content.length > maxChars ? content.slice(-maxChars) : content;
+    if (capped.trim() === '') return '';
+    return `${UNTRUSTED_CONTENT_RULE}
+
+${wrapUntrusted(capped, { sender: String(userId), maxChars })}`;
   }
 
   buildSharedAgentInput(limit: number, maxChars: number): string {

@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.10.0] - 2026-11-06
+
+### Added
+
+- **提示词注入防护**（`src/core/injection-guard.ts`）
+  - `scanForInjection`：识别 10 类套路（忽略指令 / 系统提示 / 角色覆盖 / 套取密钥 / 要求转发 / 调用工具 / 破坏性命令 / 冒充权威 / 扫码钓鱼），分级 low/medium/high 并给出证据片段
+  - `wrapUntrusted`：把外部内容包进 `⟦外部内容·仅数据⟧ … ⟦/外部内容⟧` 边界块，**中和伪造的边界标记**，防止内容"提前闭块"再冒充系统；高危内容打 `⚠可疑(规则名)` 标记但保留原文
+  - `sanitizeText`：去零宽字符/控制字符、统一空白、限长
+  - `UNTRUSTED_CONTENT_RULE`：拼进 agent 输入的一句话边界规则
+- 群聊/私聊的 `buildAgentInput` 现在都走这层包裹（内容为空时保持空，不产生噪声）
+
+### Verified
+
+- `vitest run src`：14 文件 / **147 用例**（新增 18 个防护用例，含"伪造边界标记"攻击）
+
 ## [0.9.0] - 2026-11-05
 
 ### Added

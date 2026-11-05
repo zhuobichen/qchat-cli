@@ -1,4 +1,5 @@
 import { MessageSegment, OneBotEvent } from './onebot-client.js';
+import { wrapUntrusted, UNTRUSTED_CONTENT_RULE } from './injection-guard.js';
 
 interface ContextMessage {
   id: number;
@@ -76,7 +77,12 @@ export class GroupContextStore {
   buildAgentInput(groupId: number, limit: number, maxChars: number): string {
     const history = (this.messages.get(groupId) || []).slice(-limit);
     const content = this.format(history);
-    return content.length > maxChars ? content.slice(-maxChars) : content;
+    const capped = content.length > maxChars ? content.slice(-maxChars) : content;
+    if (capped.trim() === '') return '';
+    // 群消息是外部内容：包裹成「仅数据」块，并附边界规则
+    return `${UNTRUSTED_CONTENT_RULE}
+
+${wrapUntrusted(capped, { groupId, sender: '群成员', maxChars })}`;
   }
 
   findImage(groupId: number, messageId: number, index: number): ImageReference | null {
