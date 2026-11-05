@@ -3,10 +3,13 @@ import chalk from 'chalk';
 import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { spawnSync } from 'node:child_process';
 import { buildSendPlan, formatPlan, toRelativeBodyFile } from '../core/push.js';
+import path from 'node:path';
 import { join } from 'path';
 import { authManager } from '../core/auth.js';
-import { buildDigest, renderDigestMarkdown, type DigestMessage } from '../core/digest.js';
+import { buildDigest, renderDigestMarkdown, renderDigestText, type DigestMessage } from '../core/digest.js';
 import { resolveSession } from '../utils/resolveSession.js';
+import { safetyManager } from '../core/safety.js';
+import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 
 /** 把 OneBot 消息段压成纯文本（与 group-history 脚本口径一致） */
 function flatten(message: unknown): string {
@@ -70,6 +73,10 @@ export function digestCommand(program: Command): void {
     .option('--stdout', '同时打印到终端')
     .option('--push <email>', '把日报发到这个邮箱（调用本机 agently-cli，需已登录）')
     .option('--push-dry', '只打印将要执行的发信命令，不真的发送')
+    .option('--send-to <id>', '把日报摘要直接发到这个 QQ 号或群号')
+    .option('--send-kind <kind>', '发送类型：private（默认）或 group', 'private')
+    .option('--force', '跳过发送确认')
+    .option('--from-index', '不联网，直接用本地索引（qce index 建的）出日报')
     .action(async (session, options) => {
       if (!authManager.isConfigured()) {
         console.log(chalk.red('请先配置 NapCatQQ 连接'));
@@ -90,7 +97,16 @@ export function digestCommand(program: Command): void {
       let seq: number | undefined;
       let guard = 0;
 
-      while (byId.size < limit && guard < 60) {
+      if (options.fromIndex) {
+        const store = new MessageStore(defaultIndexRoot());
+        for (const m of store.load(groupId)) {
+          if (cutoff && m.time < cutoff) continue;
+          if (byId.size >= limit) break;
+          byId.set(m.id, { time: m.time, senderId: m.senderId, senderName: m.senderName, text: m.text });
+        }
+      }
+
+      while (!options.fromIndex && byId.size < limit && guard < 60) {
         guard += 1;
         const batch = await client.getGroupMsgHistory(groupId, seq, Math.min(100, limit - byId.size));
         const messages = batch?.messages ?? [];
@@ -167,6 +183,37 @@ export function digestCommand(program: Command): void {
           } catch (error) {
             console.log(chalk.red(`发送失败: ${(error as Error).message}`));
           }
+        }
+      }
+
+      if (options.sendTo) {
+        const targetId = await resolveSession(String(options.sendTo));
+        const kind = String(options.sendKind || 'private').toLowerCase() === 'group' ? 'group' : 'private';
+
+        if (!safetyManager.isAllowed(targetId)) {
+          console.log(chalk.red(`会话 ${targetId} 未授权发送，先执行: qce safety allow ${targetId}`));
+        } else {
+          const client = authManager.getClient();
+          const text = renderDigestText(digest);
+          let ok = false;
+          try {
+            if (kind === 'group') {
+              // 群优先发文件（完整 Markdown），失败退回文本摘要
+              try {
+                await client.uploadGroupFile(targetId, file, path.basename(file));
+                ok = true;
+              } catch {
+                await client.sendGroupMessage(targetId, text);
+                ok = true;
+              }
+            } else {
+              await client.sendPrivateMessage(targetId, text);
+              ok = true;
+            }
+          } catch (error) {
+            console.log(chalk.red(`发送失败: ${(error as Error).message}`));
+          }
+          if (ok) console.log(chalk.green(`日报已发到 ${kind === 'group' ? '群' : 'QQ'} ${targetId}`));
         }
       }
 

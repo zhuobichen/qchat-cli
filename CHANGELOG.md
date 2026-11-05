@@ -2,6 +2,19 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-11-05
+
+### Added
+
+- **`qce digest --send-to <QQ号|群号>`**：日报生成后直接发到 QQ（私聊发紧凑文本摘要，群聊优先上传完整 `.md`，失败退回文本）。走现有 `safety` 白名单，需先 `qce safety enable` + `qce safety allow`。
+- **`qce digest --from-index`**：不联网，直接用 `qce index` 建的本地索引出日报（离线可用，也方便回放历史）。
+- `renderDigestText()`：把日报渲染成适合 QQ 的纯文本（Markdown 在 QQ 不渲染），超长自动截断。
+
+### Verified
+
+- 真实发送：`qce digest 123456789 --from-index --send-to 1473517806` → 消息实际送达 QQ
+- 89 个单测通过；`tsc` 通过
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

@@ -66,6 +66,9 @@ qce export --all --format json
 ```bash
 qce digest 123456789                  # last 500 messages -> output/digest-<id>-<date>.md
 qce digest 123456789 --days 1 --ai    # today only, plus an LLM summary
+qce digest 123456789 --send-to 10001000        # send the digest straight to QQ
+qce digest 123456789 --send-to 123456789 --send-kind group  # to a group (uploads the .md)
+qce digest 123456789 --from-index             # offline: build from the local index
 qce digest 123456789 --push me@qq.com # email the digest (local agently-cli, needs auth login)
 ```
 

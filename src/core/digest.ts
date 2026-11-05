@@ -177,3 +177,42 @@ export function renderDigestMarkdown(digest: Digest, aiSummary?: string): string
 
   return lines.join('\n');
 }
+
+/**
+ * 渲染成适合直接发到 QQ 的紧凑纯文本（Markdown 在 QQ 里不渲染）。
+ * 超长时截断并注明完整文件。
+ */
+export function renderDigestText(digest: Digest, maxChars = 1500): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const fmt = (ts: number) => {
+    const d = new Date(ts * 1000);
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+
+  const lines: string[] = [];
+  lines.push(`${digest.title}`);
+  lines.push(digest.total
+    ? `${fmt(digest.from)} → ${fmt(digest.to)}｜${digest.total} 条 / ${digest.participants} 人`
+    : '（无消息）');
+
+  if (digest.speakers.length) {
+    lines.push(`发言最多：${digest.speakers.slice(0, 3).map((s) => `${s.name} ${s.count}`).join('、')}`);
+  }
+
+  const peak = Math.max(...digest.hourly);
+  if (peak > 0) {
+    const top = digest.hourly.indexOf(peak);
+    lines.push(`最活跃时段：${p(top)} 时（${peak} 条）`);
+  }
+
+  if (digest.highlights.length) {
+    lines.push('值得回看：');
+    for (const h of digest.highlights.slice(0, 5)) {
+      lines.push(`· ${fmt(h.time)} ${h.senderName}：${h.text}`);
+    }
+  }
+
+  let text = lines.join('\n');
+  if (text.length > maxChars) text = `${text.slice(0, maxChars - 1)}…`;
+  return text;
+}

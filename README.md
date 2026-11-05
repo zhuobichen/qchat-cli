@@ -67,6 +67,9 @@ qce export --all --format json           # 全量会话
 qce digest 123456789                    # 最近 500 条 → output/digest-<群号>-<日期>.md
 qce digest 123456789 --days 1 --ai      # 只看今天，并调用模型生成要点摘要
 qce digest 123456789 --limit 2000 --stdout   # 同时打印到终端
+qce digest 123456789 --send-to 10001000       # 生成后直接把摘要发到 QQ
+qce digest 123456789 --send-to 123456789 --send-kind group   # 发到群（优先发 .md 文件）
+qce digest 123456789 --from-index            # 不联网，直接用本地索引出日报
 qce digest 123456789 --push me@qq.com   # 生成后直接发邮件（用本机 agently-cli，需先 auth login）
 qce digest 123456789 --push me@qq.com --push-dry   # 只打印将执行的发信命令
 ```

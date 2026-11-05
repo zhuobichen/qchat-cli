@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildDigest, renderDigestMarkdown, type DigestMessage } from './digest.js';
+import { buildDigest, renderDigestMarkdown, renderDigestText, type DigestMessage } from './digest.js';
 
 function msg(time: string, id: number, name: string, text: string): DigestMessage {
   return { time: Math.floor(new Date(time).getTime() / 1000), senderId: id, senderName: name, text };
@@ -75,5 +75,31 @@ describe('renderDigestMarkdown', () => {
   it('没有 AI 摘要时不渲染该段', () => {
     const d = buildDigest([msg('2026-11-04T09:10:00', 1, '张三', 'hi')]);
     expect(renderDigestMarkdown(d)).not.toContain('## AI 摘要');
+  });
+});
+
+describe('renderDigestText', () => {
+  const d = buildDigest([
+    msg('2026-11-04T09:10:00', 1, '张三', '明天下午三点开会'),
+    msg('2026-11-04T09:20:00', 1, '张三', '材料我发群里了'),
+    msg('2026-11-04T14:30:00', 2, '李四', '@全体成员 下午三点开会，别迟到'),
+  ], { title: '群 123 日报' });
+
+  it('包含标题、统计、发言榜与活跃时段', () => {
+    const t = renderDigestText(d);
+    expect(t).toContain('群 123 日报');
+    expect(t).toContain('3 条 / 2 人');
+    expect(t).toContain('发言最多');
+    expect(t).toContain('最活跃时段');
+  });
+
+  it('超长时截断并带省略号', () => {
+    const t = renderDigestText(d, 40);
+    expect(t.length).toBeLessThanOrEqual(40);
+    expect(t.endsWith('…')).toBe(true);
+  });
+
+  it('空日报不崩', () => {
+    expect(renderDigestText(buildDigest([]))).toContain('无消息');
   });
 });
