@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { join } from 'node:path';
 import { buildSendPlan, formatPlan, toRelativeBodyFile } from './push.js';
 
 describe('buildSendPlan', () => {
