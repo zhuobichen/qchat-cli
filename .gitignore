@@ -52,3 +52,8 @@ napcat-qr*.png
 origin-note.jpg
 debug-napcat.bat
 open-qr.bat
+
+# 本地二维码截图
+qr-*.png
+server-qr*.png
+local-qr*.png
