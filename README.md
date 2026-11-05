@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/badge/License-MIT-f4b400)](./LICENSE)
 [![Local-first](https://img.shields.io/badge/local--first-zero%20telemetry-8a2be2)](#隐私与安全)
 
-简体中文
+简体中文 · [English](./README.en.md)
 
 </div>
 
