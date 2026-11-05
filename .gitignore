@@ -43,3 +43,12 @@ NUL
 .qce-alert/
 .ocr-test/
 .qce-ocr-tmp/
+
+# 本地个人文件（含身份卡 / 桥接配置，勿入库）
+private/QQ助手身份卡.md
+private/dsh-bridge.config.json
+napcat/
+napcat-qr*.png
+origin-note.jpg
+debug-napcat.bat
+open-qr.bat
