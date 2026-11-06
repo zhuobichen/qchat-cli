@@ -2,6 +2,25 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.12.0] - 2026-11-06
+
+### Added
+
+- **语音转写**
+  - `qce asr <文件...>`：单独转写本地音频（`--json` 输出结构化结果）
+  - `qce index <群号> --asr`：把群里的语音条转成文字，生成 `asr:<消息id>:<序号>` 合成消息并入索引 —— 之后 `search` / `digest` / 语义检索都能覆盖语音内容
+  - 离线优先：`scripts/asr_audio.py` 用 faster-whisper 加载**本地已缓存**模型（`QCE_ASR_MODEL` 可换，默认 small），设置 `HF_HUB_OFFLINE=1` 避免无网时卡在下载
+  - 纯函数 `src/core/asr.ts`（9 个单测）；解释器复用 OCR 的 `resolvePython()`
+
+### Verified
+
+- 真实音频：`qce asr 语音_16.mp3` → `看見你瘦了,你瘦了你不肯吃飯了`（9.26s 音频，模型 small，离线）
+- `vitest run src`：15 文件 / **156 用例**
+
+### Known limitation
+
+- 群 `913807639` 当前缓存窗口内没有语音消息，`index --asr` 的真实群数据尚未验证（等群里出现语音条）
+
 ## [0.11.0] - 2026-11-06
 
 ### Fixed

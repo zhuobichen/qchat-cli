@@ -19,6 +19,7 @@ export interface StoredMessage {
   senderName: string;
   text: string;
   images?: string[];
+  voices?: string[];
 }
 
 /** 默认索引目录：~/.qchat-cli/index（可用 QCE_INDEX_DIR 覆盖） */

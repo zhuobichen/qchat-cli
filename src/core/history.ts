@@ -12,6 +12,20 @@ export interface FlatMessage {
   text: string;
   /** 图片段引用（OneBot 的 file 或 url），供 OCR 使用 */
   images?: string[];
+  /** 语音段引用，供转写使用 */
+  voices?: string[];
+}
+
+/** 从消息段里取出语音引用（record/voice，优先 file，其次 url） */
+export function voiceRefs(message: unknown): string[] {
+  if (!Array.isArray(message)) return [];
+  const out: string[] = [];
+  for (const seg of message as any[]) {
+    if (seg?.type !== 'record' && seg?.type !== 'voice') continue;
+    const ref = seg?.data?.file || seg?.data?.url || seg?.data?.path;
+    if (typeof ref === 'string' && ref !== '') out.push(ref);
+  }
+  return out;
 }
 
 /** 从消息段里取出图片引用（优先 file，其次 url） */
@@ -96,6 +110,7 @@ export async function fetchGroupMessages(
         senderName: (m.sender as any)?.card || (m.sender as any)?.nickname || String(m.sender?.user_id ?? m.user_id),
         text: flattenMessage(m.message),
         ...(imageRefs(m.message).length ? { images: imageRefs(m.message) } : {}),
+        ...(voiceRefs(m.message).length ? { voices: voiceRefs(m.message) } : {}),
       });
     }
 

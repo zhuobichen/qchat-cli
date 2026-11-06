@@ -83,6 +83,8 @@ qce digest 123456789 --push me@qq.com --push-dry   # 只打印将执行的发信
 ```bash
 qce index 123456789                   # 建/增量更新某个群的索引
 qce index 123456789 --ocr             # 顺带把消息里的图片转成文字入库（本机 rapidocr）
+qce index 123456789 --asr             # 顺带把语音条转成文字（本机 faster-whisper，离线）
+qce asr ./voice.mp3                   # 单独转写本地音频
 qce index --all --limit 2000          # 更新所有已入索引的群
 qce index --stats                     # 看各群条数与最新时间
 qce index --clear                     # 清空索引

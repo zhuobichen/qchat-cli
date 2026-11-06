@@ -81,6 +81,8 @@ Index once, then search is millisecond-fast (no more re-pulling history):
 ```bash
 qce index 123456789                   # build / incrementally update one group
 qce index 123456789 --ocr             # also OCR images into the index (local rapidocr)
+qce index 123456789 --asr             # also transcribe voice messages (local faster-whisper)
+qce asr ./voice.mp3                   # transcribe a local audio file
 qce index --all --limit 2000          # update every indexed group
 qce index --stats                     # counts and newest timestamp per group
 qce index --clear                     # wipe the index

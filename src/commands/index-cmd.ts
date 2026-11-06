@@ -6,6 +6,7 @@ import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import { VectorStore } from '../core/vector-store.js';
 import { embedTexts, resolveApiKey } from '../core/embeddings.js';
 import { runOcr, toSyntheticMessages } from '../core/ocr.js';
+import { runAsr, toVoiceMessages } from '../core/asr.js';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,6 +28,7 @@ export function indexCommand(program: Command): void {
     .option('--clear', '清空索引（配合 group 只清单群）')
     .option('--embed', '同时生成语义向量（阿里云百炼 text-embedding-v4，需 DASHSCOPE_API_KEY）')
     .option('--ocr', '把消息里的图片转成文字一并入库（本机 rapidocr）')
+    .option('--asr', '把消息里的语音转成文字一并入库（本机 faster-whisper，离线模型）')
     .option('--json', '输出 JSON')
     .action(async (group, options) => {
       const store = new MessageStore(defaultIndexRoot());
@@ -89,12 +91,59 @@ export function indexCommand(program: Command): void {
 
       const results: Array<{ groupId: number; added: number; total: number; newest: number; embedded?: number }> = [];
       for (const gid of targets) {
+        let ocrAdded = 0;
+        let asrAdded = 0;
         try {
           const messages = await fetchGroupMessages(client, gid, { limit });
           const { added, total } = store.merge(gid, messages);
           const newest = store.watermark(gid);
 
-          let ocrAdded = 0;
+          if (options.asr) {
+            const docs = store.load(gid);
+            const ids = new Set(docs.map((d) => d.id));
+            const pending = docs.filter((d) => d.voices?.length && ![...ids].some((i) => i.startsWith(`asr:${d.id}:`)));
+            const tmpDir = join(process.cwd(), '.qce-asr-tmp');
+            mkdirSync(tmpDir, { recursive: true });
+
+            for (const doc of pending.slice(0, 20)) {
+              const paths: string[] = [];
+              for (const ref of doc.voices ?? []) {
+                try {
+                  const info: any = await (client as any).getRecord(ref);
+                  const localFile = typeof info?.file === 'string' ? info.file : '';
+                  if (localFile && existsSync(localFile)) {
+                    paths.push(localFile);
+                    continue;
+                  }
+                  const url = String(info?.url ?? '');
+                  if (url.startsWith('http')) {
+                    const res = await fetch(url);
+                    if (res.ok) {
+                      const buf = Buffer.from(await res.arrayBuffer());
+                      const file = join(tmpDir, `${createHash('sha256').update(buf).digest('hex').slice(0, 16)}.audio`);
+                      writeFileSync(file, buf);
+                      paths.push(file);
+                    }
+                  }
+                } catch {
+                  // 单条语音取不到就跳过
+                }
+              }
+              if (paths.length === 0) continue;
+              const results = runAsr(paths);
+              const synthetic = toVoiceMessages(
+                { id: doc.id, groupId: gid, time: doc.time, senderId: doc.senderId, senderName: doc.senderName },
+                results,
+              );
+              if (synthetic.length > 0) {
+                store.merge(gid, synthetic);
+                asrAdded += synthetic.length;
+              }
+            }
+          }
+
+
+
           if (options.ocr) {
             const docs = store.load(gid);
             const ids = new Set(docs.map((d) => d.id));
@@ -156,6 +205,7 @@ export function indexCommand(program: Command): void {
           results.push({ groupId: gid, added, total, newest, ...(wantEmbed ? { embedded } : {}) });
           console.log(chalk.green(`群 ${gid}: +${added} 条（共 ${total}）  最新 ${fmt(newest)}`
             + (options.ocr ? `  OCR +${ocrAdded}` : '')
+            + (options.asr ? `  ASR +${asrAdded}` : '')
             + (wantEmbed ? `  向量 +${embedded}` : '')));
         } catch (error) {
           console.log(chalk.red(`群 ${gid} 失败: ${(error as Error).message}`));

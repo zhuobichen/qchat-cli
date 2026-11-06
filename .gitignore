@@ -57,3 +57,4 @@ open-qr.bat
 qr-*.png
 server-qr*.png
 local-qr*.png
+.qce-asr-tmp/
