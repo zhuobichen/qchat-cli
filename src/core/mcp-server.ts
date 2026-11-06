@@ -13,10 +13,45 @@ export interface McpTool {
   inputSchema: Record<string, unknown>;
 }
 
+export interface SendArgs {
+  kind: 'private' | 'group';
+  target: number;
+  text: string;
+}
+
 export interface McpBackend {
   search(args: { query: string; groupId?: number; limit?: number; since?: number }): Promise<unknown>;
   digest(args: { groupId: number; limit?: number; days?: number }): Promise<unknown>;
   listGroups(): Promise<unknown>;
+  /** 真正发送；只在两阶段确认通过后被调用 */
+  send(args: SendArgs): Promise<unknown>;
+}
+
+/** 群发开关：默认关闭，只能在进程内显式打开（MCP 场景不给模型这个能力） */
+export interface McpOptions {
+  allowGroupSend?: boolean;
+  /** 确认令牌有效期（毫秒） */
+  tokenTtlMs?: number;
+}
+
+interface PendingSend {
+  args: SendArgs;
+  summary: string;
+  expiresAt: number;
+}
+
+/** 待确认的发送请求（内存态，进程退出即失效） */
+const pending = new Map<string, PendingSend>();
+
+/** 仅供测试：清空待确认队列 */
+export function __clearPending(): void {
+  pending.clear();
+}
+let tokenSeq = 0;
+
+function makeToken(): string {
+  tokenSeq += 1;
+  return `ctk_${Date.now().toString(36)}_${tokenSeq}`;
 }
 
 export interface JsonRpcRequest {
@@ -66,6 +101,20 @@ export const TOOLS: McpTool[] = [
     description: '列出当前账号加入的群（群号、名称、人数）。',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'send_message',
+    description: '给指定 QQ 或群发消息。两阶段确认：第一次只返回确认令牌与摘要，带上 confirmationToken 再调一次才真正发送。群发默认禁用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['private', 'group'], description: 'private=私聊（默认），group=群聊' },
+        target: { type: 'number', description: 'QQ 号或群号' },
+        text: { type: 'string', description: '消息内容（纯文本）' },
+        confirmationToken: { type: 'string', description: '第一阶段返回的 ctk_xxx；带上它才会真正发送' },
+      },
+      required: ['target', 'text'],
+    },
+  },
 ];
 
 function ok(id: string | number | null, result: unknown): JsonRpcResponse {
@@ -80,7 +129,11 @@ function fail(id: string | number | null, code: number, message: string): JsonRp
  * 处理一条 JSON-RPC 消息。
  * 通知（无 id）返回 null，调用方不应回包。
  */
-export async function handleMessage(backend: McpBackend, message: JsonRpcRequest): Promise<JsonRpcResponse | null> {
+export async function handleMessage(
+  backend: McpBackend,
+  message: JsonRpcRequest,
+  options: McpOptions = {},
+): Promise<JsonRpcResponse | null> {
   const id = message.id ?? null;
   const method = message.method ?? '';
 
@@ -91,7 +144,7 @@ export async function handleMessage(backend: McpBackend, message: JsonRpcRequest
       return ok(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'qchat-cli', version: '0.12.0' },
+        serverInfo: { name: 'qchat-cli', version: '0.13.0' },
       });
 
     case 'ping':
@@ -134,6 +187,58 @@ export async function handleMessage(backend: McpBackend, message: JsonRpcRequest
             const data = await backend.listGroups();
             return ok(id, { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
           }
+          case 'send_message': {
+            const kind: 'private' | 'group' = args.kind === 'group' ? 'group' : 'private';
+            const target = Number(args.target);
+            const text = String(args.text ?? '').trim();
+            if (!Number.isFinite(target) || target <= 0) {
+              return ok(id, { content: [{ type: 'text', text: 'target 需要是 QQ 号或群号' }], isError: true });
+            }
+            if (text === '') {
+              return ok(id, { content: [{ type: 'text', text: 'text 不能为空' }], isError: true });
+            }
+            if (kind === 'group' && options.allowGroupSend !== true) {
+              return ok(id, {
+                content: [{ type: 'text', text: '群发已在服务端禁用（需要显式打开 MCP_ALLOW_GROUP_SEND=1）' }],
+                isError: true,
+              });
+            }
+
+            const token = typeof args.confirmationToken === 'string' ? args.confirmationToken : '';
+            const where = kind === 'group' ? '群' : 'QQ';
+
+            if (token === '') {
+              // 第一阶段：只登记，不发。模型必须把摘要交给人确认后再次调用。
+              const ctk = makeToken();
+              const summary = `将发送到${where} ${target}：${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`;
+              pending.set(ctk, {
+                args: { kind, target, text },
+                summary,
+                expiresAt: Date.now() + (options.tokenTtlMs ?? 300_000),
+              });
+              return ok(id, {
+                content: [{
+                  type: 'text',
+                  text: `待确认：${summary}
+确认后再调用一次，并带上这个令牌：
+confirmation_token: ${ctk}
+（5 分钟内有效）`,
+                }],
+              });
+            }
+
+            const entry = pending.get(token);
+            if (!entry || entry.expiresAt < Date.now()) {
+              pending.delete(token);
+              return ok(id, { content: [{ type: 'text', text: '确认令牌无效或已过期，请重新发起' }], isError: true });
+            }
+            if (entry.args.kind !== kind || entry.args.target !== target || entry.args.text !== text) {
+              return ok(id, { content: [{ type: 'text', text: '确认令牌与本次发送内容不匹配' }], isError: true });
+            }
+            pending.delete(token);
+            const sent = await backend.send(entry.args);
+            return ok(id, { content: [{ type: 'text', text: JSON.stringify(sent ?? { ok: true }, null, 2) }] });
+          }
           default:
             return fail(id, -32602, `unknown tool: ${name}`);
         }
@@ -154,7 +259,11 @@ export async function handleMessage(backend: McpBackend, message: JsonRpcRequest
  * stdio 事件循环：逐行读 JSON、回写响应。
  * 任何解析错误都回 -32700 并且不中断循环。
  */
-export function runStdioServer(backend: McpBackend, io: { stdin: NodeJS.ReadableStream; stdout: NodeJS.WritableStream }): void {
+export function runStdioServer(
+  backend: McpBackend,
+  io: { stdin: NodeJS.ReadableStream; stdout: NodeJS.WritableStream },
+  options: McpOptions = {},
+): void {
   let buffer = '';
 
   io.stdin.setEncoding('utf8');
@@ -175,7 +284,7 @@ export function runStdioServer(backend: McpBackend, io: { stdin: NodeJS.Readable
         continue;
       }
 
-      void handleMessage(backend, parsed)
+      void handleMessage(backend, parsed, options)
         .then((response) => {
           if (response) io.stdout.write(`${JSON.stringify(response)}\n`);
         })

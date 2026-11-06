@@ -5,6 +5,7 @@ import { fetchGroupMessages } from '../core/history.js';
 import { searchDocs } from '../core/search-index.js';
 import { buildDigest } from '../core/digest.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
+import { safetyManager } from '../core/safety.js';
 
 /**
  * 把 OneBot 客户端包装成 MCP backend。
@@ -48,6 +49,19 @@ function makeBackend(): McpBackend {
       return digest;
     },
 
+    async send({ kind, target, text }) {
+      // 发送前必须过安全检查：未被授权的会话一律拒绝
+      if (!safetyManager.isAllowed(target)) {
+        throw new Error(`会话 ${target} 未授权发送（先跑 qce safety allow ${target}）`);
+      }
+      if (kind === 'group') {
+        await client.sendGroupMessage(target, text);
+        return { ok: true, kind, target, sentAt: new Date().toISOString() };
+      }
+      await client.sendPrivateMessage(target, text);
+      return { ok: true, kind, target, sentAt: new Date().toISOString() };
+    },
+
     async listGroups() {
       const groups: any[] = (await client.getGroupList()) as any[];
       return (Array.isArray(groups) ? groups : []).map((g: any) => ({
@@ -71,6 +85,8 @@ export function mcpCommand(program: Command): void {
       }
       // stdout 只能出现 JSON-RPC，日志一律走 stderr
       console.error('qce mcp: ready (stdio)');
-      runStdioServer(makeBackend(), { stdin: process.stdin, stdout: process.stdout });
+      const allowGroupSend = process.env.MCP_ALLOW_GROUP_SEND === '1';
+      if (!allowGroupSend) console.error('qce mcp: 群发已禁用（MCP_ALLOW_GROUP_SEND=1 可打开）');
+      runStdioServer(makeBackend(), { stdin: process.stdin, stdout: process.stdout }, { allowGroupSend });
     });
 }

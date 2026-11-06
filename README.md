@@ -109,7 +109,12 @@ qce search 论文 --from 10001000 --limit 50 --json
 }
 ```
 
-暴露三个只读工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）。模型可以在编辑器里直接问"上周群里谁提过这个报错"。
+暴露四个工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）、`send_message`（发消息，两阶段确认）。
+
+`send_message` 的安全设计：
+- **两阶段确认**：第一次只返回摘要和 `confirmation_token`，带上令牌再调一次才真正发送（令牌 5 分钟有效、与内容绑定，改内容即失效）
+- **群发默认禁用**：需要显式 `MCP_ALLOW_GROUP_SEND=1` 才允许发群
+- **走 safety 白名单**：目标会话必须已 `qce safety allow`
 
 **4）实时监听 + AI 回复**（需要模型 API Key，本地私密配置）
 

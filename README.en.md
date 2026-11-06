@@ -107,7 +107,12 @@ Plug it into Claude Code / Cursor (MCP over stdio):
 }
 ```
 
-Three read-only tools: `search_messages`, `group_digest`, `list_groups` — so your editor can answer "who mentioned this error in the group last week".
+Four tools: `search_messages`, `group_digest`, `list_groups`, and `send_message`.
+
+`send_message` is deliberately hard to abuse:
+- **two-phase confirmation** — the first call only returns a summary plus a `confirmation_token`; nothing is sent until you call again with that token (5-minute TTL, bound to the exact content)
+- **group sending is off by default** — requires `MCP_ALLOW_GROUP_SEND=1`
+- **safety allowlist** — the target must already be allowed via `qce safety allow`
 
 **4) Real-time watch + AI replies**
 

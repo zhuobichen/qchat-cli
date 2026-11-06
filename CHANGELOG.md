@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.13.0] - 2026-11-06
+
+### Added
+
+- **MCP `send_message` 工具**
+  - **两阶段确认**：第一次调用只登记并返回摘要 + `confirmation_token`（`ctk_*`，5 分钟有效、与 kind/target/text 绑定），第二次带令牌才真正发送；内容被改动、令牌过期、令牌无效都会被拒
+  - **群发默认禁用**：`MCP_ALLOW_GROUP_SEND=1` 才打开，避免模型在无人看管时往群里发东西
+  - **走 safety 白名单**：目标必须已 `qce safety allow`，否则直接报错且不发送
+  - 令牌只存在进程内存，MCP 进程退出即失效
+
+### Verified（真实链路）
+
+- MCP stdio 实测：`tools/list` 返回 4 个工具；`send_message` 群发被拒；私聊两阶段 → 第二阶段返回 `{"ok":true,"kind":"private","target":1473517806}`，消息实际送达
+- `vitest run src`：15 文件 / **164 用例**（新增 8 个 send_message 用例）
+
 ## [0.12.0] - 2026-11-06
 
 ### Added
