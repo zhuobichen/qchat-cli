@@ -2,6 +2,34 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.16.0] - 2026-11-06
+
+### Added
+
+- **语音合成 `qce tts`**（阿里云百炼 Qwen-TTS，模型 `qwen3-tts-flash`）
+  - 文字 → wav → ffmpeg 转 **AMR**（QQ 语音条可用）→ 发成 `record` 段
+  - 关键坑：NapCat 对 `file://` 语音转码会失败，**必须用 `base64://`**；wav 不认，必须转 AMR/mp3
+  - 找不到 ffmpeg 时明确提示并退回原始文件
+- **表情自动收集 `qce face collect <群号>`**
+  - 扫本地索引里带图片的消息 → 按内容 sha256 去重 → 写候选目录 → `--apply` 才并入表情库
+  - 候选目录也参与去重，重复扫不会重复报；`--dry` 只看不收
+- **主动聊天 `qce proactive`**
+  - 纯决策引擎：免打扰时段（支持跨零点）/ 最小间隔 / 每日上限 / 概率触发 / 冷场判定（13 个单测）
+  - `run` 支持 `--dry` 与 `--text`（不给就用最重的长期记忆当话题）；状态持久化到索引目录
+
+### Verified（真实链路）
+
+- TTS：合成 → AMR → 发送成功，QQ 端收到语音条
+- 表情收集：群 913807639 扫到 2 张图，去重后并入表情库（232 → 234）
+- 主动聊天：决策 → 实际发出 → 状态落盘
+- `vitest run src`：20 文件 / **241 用例**
+
+### 生态处置（本轮补充）
+
+- `astrbot_plugin_proactive_chat` 是 AGPL-3.0：只借鉴「免打扰 + 概率 + 间隔」的设计，代码自行实现
+- `astrbot_plugin_meme_manager`（MIT）：借鉴自动收集思路，实现独立
+- `dafeiyu-astrbot`（MIT）：TTS 走同一家百炼，端点与模型名经实测确定
+
 ## [0.15.0] - 2026-11-06
 
 ### Added

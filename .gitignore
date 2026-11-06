@@ -58,3 +58,5 @@ qr-*.png
 server-qr*.png
 local-qr*.png
 .qce-asr-tmp/
+.tts-out/
+private/emoji-candidates/

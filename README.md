@@ -159,7 +159,17 @@ qce memory forget                    # 清理过期记忆
 
 每条记忆带时间与权重，按**半衰期**衰减（默认 30 天减半、180 天过期），被召回一次就重新计时。启用后 `group-bot` / `private-bot` 会自动把最要紧的几条注入上下文——原话还在，只是慢慢变淡，而不是压缩成一句摘要。
 
-**8）自动化与运维**
+**8）语音条 / 表情收集 / 主动聊天**
+
+```bash
+qce tts "晚上一起吃饭？" --send-to 10001000     # 文字→语音条（Qwen-TTS，自动转 AMR）
+qce face collect 123456789                      # 从群图片自动收集表情（去重进候选）
+qce face collect 123456789 --apply              # 确认后并入表情库
+qce proactive run --to 10001000 --dry           # 主动聊天决策（免打扰/间隔/上限/概率）
+qce proactive config --quiet 23-8 --max 3
+```
+
+**9）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）

@@ -155,7 +155,17 @@ qce memory list / stats / forget
 
 Each memory carries a timestamp and weight, decays with a **half-life** (30 days to halve, 180 to expire), and resets its clock when recalled. Bot contexts automatically inject the heaviest few — the original wording survives, it just fades.
 
-**8) Automation & ops**
+**8) Voice notes / emoji harvesting / proactive chat**
+
+```bash
+qce tts "dinner tonight?" --send-to 10001000   # text → voice note (Qwen-TTS, auto AMR)
+qce face collect 123456789                     # harvest emoji from group images (deduped)
+qce face collect 123456789 --apply             # merge into the sticker library
+qce proactive run --to 10001000 --dry          # proactive decision: DND / gap / cap / probability
+qce proactive config --quiet 23-8 --max 3
+```
+
+**9) Automation & ops**
 
 ```bash
 qce send group <group> "..."             # requires `qce safety enable` + allowlist first
