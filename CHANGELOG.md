@@ -2,6 +2,24 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.2] - 2026-11-07
+
+### Docs
+
+- **`QUESTION.md` 新增 Q12–Q23**：本轮踩过的坑全部记录，含排查过程与关键实验
+  - Q12 cuDNN autotune 导致 TTS 一次 19 秒（**真因**，修完 0.43 秒）
+  - Q13 venv 在中文路径下静默回落 CPU 版 torch
+  - Q14 torchcodec 在中文路径下 DLL 加载失败 + soundfile 回退（含通道顺序坑）
+  - Q15 语音条「语音转换失败」三连坑（wav 不认 / file:// 不认 / 需 AMR+base64）
+  - Q16 同一 QQ 号只能一端在线
+  - Q17 NapCat 静默失败 + 弹旧二维码（权限）
+  - Q18 `get_login_info` 缺 token 导致一直「等待登录」
+  - Q19 watcher 把历史消息当新消息（含自己犯的两个错）
+  - Q20 「看起来在跑其实啥也没干」三个真实案例
+  - Q21 Node 24 + undici 退出触发 uv assertion
+  - Q22 cmd 批处理 UTF-8 中文导致跑错目录
+  - Q23 pip 批量装依赖卡死（逐个装 3 分钟 vs 批量 21 分钟无进展）
+
 ## [0.24.1] - 2026-11-06
 
 ### Fixed
