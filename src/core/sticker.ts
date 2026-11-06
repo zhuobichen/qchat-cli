@@ -9,6 +9,7 @@
  * 纯逻辑（候选构造、请求体、结果解析）与网络分开，便于单测。
  */
 import { searchEmojiLibrary, emojiPath } from './emoji-library.js';
+import { searchMemes } from './memesource.js';
 
 export const JEV_ENDPOINT = 'https://api.302ai.cn/typesafeai/v1/systemone';
 export const JEV_MODEL = 'jev-latest';
@@ -115,4 +116,87 @@ export async function pickSticker(intent: string, options: PickOptions = {}): Pr
 /** 校验 id 并返回本地文件路径（不存在返回 null） */
 export function stickerFile(id: string): string | null {
   return emojiPath(id);
+}
+
+/** memecub 找回来的表情（远端 URL，用之前要下载） */
+export interface RemoteSticker {
+  title: string;
+  url: string;
+  /** 是否允许商用（memecub 每条都给） */
+  commercialUse?: boolean;
+}
+
+/**
+ * 本地库没有合适表情时，去 memecub 找。
+ *
+ * 为什么要兜底：本地库只有 232 张，而且是我手动/半自动攒的；
+ * memecub 有几千条（facepalm 552 条、cat 5000 条），覆盖面大得多。
+ *
+ * 注意：只返回 URL，下载由调用方做（这里不该有副作用）。
+ */
+export async function findRemoteSticker(
+  intent: string,
+  options: { limit?: number; timeoutMs?: number; fetchImpl?: typeof fetch } = {},
+): Promise<RemoteSticker[]> {
+  const hits = await searchMemes(intent, {
+    limit: options.limit ?? 5,
+    ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+  });
+  return hits.map((h) => ({
+    title: h.title,
+    url: h.url,
+    ...(typeof h.commercialUse === 'boolean' ? { commercialUse: h.commercialUse } : {}),
+  }));
+}
+
+/** 合并候选：本地库 + memecub，交给 Jev 一起挑 */
+export interface MergedCandidate extends StickerCandidate {
+  origin: 'local' | 'memecub';
+  remoteUrl?: string;
+}
+
+export interface MergedPick extends StickerCandidate {
+  origin: 'local' | 'memecub';
+  remoteUrl?: string;
+  source: 'jev' | 'keyword';
+  confidence?: number;
+}
+
+/**
+ * 从「本地库 + memecub」合并候选后挑一张。
+ *
+ * 为什么不写成「本地失败再上网」：Jev 太听话，给它任何候选它都会挑一个"最不差的"，
+ * 于是 fallback 永远触发不了。正确做法是把两边候选一起给它，让它横向比较。
+ */
+export async function pickStickerMerged(
+  intent: string,
+  options: PickOptions & { remoteLimit?: number; allowRemote?: boolean } = {},
+): Promise<MergedPick | null> {
+  const locals: MergedCandidate[] = candidatesFor(intent).map((c) => ({ ...c, origin: 'local' }));
+
+  let remotes: MergedCandidate[] = [];
+  if (options.allowRemote !== false) {
+    const found = await findRemoteSticker(intent, {
+      limit: options.remoteLimit ?? 4,
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    });
+    remotes = found.map((r, i) => ({
+      id: `meme:${i}`,
+      label: r.title || '（在线表情）',
+      origin: 'memecub' as const,
+      remoteUrl: r.url,
+    }));
+  }
+
+  const all = [...locals, ...remotes];
+  if (all.length === 0) return null;
+
+  const jev = await chooseWithJev(intent, all, options);
+  if (jev) {
+    const hit = all.find((c) => c.id === jev.id)!;
+    return { ...hit, source: 'jev', confidence: jev.confidence };
+  }
+  return { ...all[0], source: 'keyword' };
 }

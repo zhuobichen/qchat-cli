@@ -10,6 +10,23 @@ function runQueue(args: string[]): { code: number; stdout: string; stderr: strin
   return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
+/** 把队列条目渲染成人类/模型都看得懂的格式 */
+export function renderQueueItem(item: any): string {
+  const p = item.payload ?? {};
+  const lines: string[] = [];
+  const where = p.kind === 'group' ? `群 ${p.peerName ?? p.peer}` : `私聊 ${p.sender ?? p.peer}`;
+  lines.push(`[${where}] ${p.sender ?? ''}（${p.senderId ?? '?'}）`);
+  lines.push(`内容：${p.text ?? ''}`);
+  if (p.mentioned) lines.push('（@ 了我）');
+  if (Array.isArray(p.context) && p.context.length) {
+    lines.push('最近上下文：');
+    for (const c of p.context.slice(-5)) lines.push(`  ${c.sender}: ${c.text}`);
+  }
+  if (p.replyHint) lines.push(`提示：${p.replyHint}`);
+  lines.push(`队列 id：${item.id}`);
+  return lines.join('\n');
+}
+
 export function queueCommand(program: Command): void {
   const q = program
     .command('queue')
@@ -17,14 +34,20 @@ export function queueCommand(program: Command): void {
 
   q.command('list')
     .description('看队列状态与条目')
-    .action(() => {
+    .option('--full', '展开完整内容', false)
+    .action((options) => {
       const r = runQueue(['list']);
       try {
         const data = JSON.parse(r.stdout);
         console.log(chalk.cyan(`共 ${data.total} 条，待处理 ${data.pending}，处理中 ${data.processing}，已跳过 ${data.skipped}`));
         for (const item of data.items ?? []) {
-          const p = item.payload ?? {};
-          console.log(`  ${item.id}  ${item.status}  ${p.kind ?? '?'} ${p.peer ?? ''}  ${String(p.text ?? '').slice(0, 40)}`);
+          if (options.full) {
+            console.log(chalk.dim('─'.repeat(40)));
+            console.log(renderQueueItem(item));
+          } else {
+            const p = item.payload ?? {};
+            console.log(`  ${item.id}  ${item.status}  ${p.kind ?? '?'} ${p.peer ?? ''}${p.mentioned ? ' @我' : ''}  ${String(p.text ?? '').slice(0, 40)}`);
+          }
         }
       } catch {
         console.log(r.stdout || r.stderr);
@@ -32,8 +55,9 @@ export function queueCommand(program: Command): void {
     });
 
   q.command('take')
-    .description('取一条待处理（标记 processing）')
-    .action(() => {
+    .description('取一条待处理（标记 processing），并展开内容')
+    .option('--json', '输出 JSON', false)
+    .action((options) => {
       const r = runQueue(['take']);
       try {
         const data = JSON.parse(r.stdout);
@@ -41,7 +65,8 @@ export function queueCommand(program: Command): void {
           console.log(chalk.green('队列是空的'));
           return;
         }
-        console.log(JSON.stringify(data, null, 2));
+        if (options.json) console.log(JSON.stringify(data, null, 2));
+        else console.log(renderQueueItem(data));
       } catch {
         console.log(r.stdout || r.stderr);
       }

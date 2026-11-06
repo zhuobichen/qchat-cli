@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.3] - 2026-11-07
+
+### Changed
+
+- **memecub 接进 MCP 的 `send_sticker`**（之前只接了 CLI，MCP 只认本地 232 张库）
+  - 新增 `pickStickerMerged()`：**本地库 + memecub 候选合并后交给 Jev 横向比较**
+  - 实测：`mind blown` / `stonks` / `无语` 都正确选到 memecub 的图（本地库没有这些）
+  - `send_sticker` 第二阶段下载远端图后发送，返回值带 `source: 'memecub'` 与 `remoteUrl`
+
+### Fixed
+
+- **原来的「本地失败才上网」设计是死代码**：Jev 太听话，给它任何候选都会挑一个"最不差的"，
+  所以 fallback 永远触发不了。改成两边候选一起给，让它真的能横向比较
+- memecub 下载目录改到 `output/memes`（原落在用户目录，低权限进程 EPERM）
+
 ## [0.24.2] - 2026-11-07
 
 ### Docs

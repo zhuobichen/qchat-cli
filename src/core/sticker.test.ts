@@ -95,3 +95,38 @@ describe('candidatesFor', () => {
     expect(Array.isArray(candidatesFor('zzzz不存在的词zzzz'))).toBe(true);
   });
 });
+
+describe('pickStickerMerged（本地库 + memecub 一起挑）', () => {
+  const fakeMemes = (items: Array<{ title: string; url: string }>) =>
+    (async () => ({
+      ok: true,
+      json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify({ total: items.length, results: items }) }] } }),
+    } as any)) as unknown as typeof fetch;
+
+  it('候选里同时含本地与 memecub 两类', async () => {
+    const { buildJevBody } = await import('./sticker.js');
+    const merged = [
+      { id: 'local-a', label: '本地表情', origin: 'local' as const },
+      { id: 'meme:0', label: 'Mind Blown', origin: 'memecub' as const, remoteUrl: 'https://x/a.jpg' },
+    ];
+    const body: any = buildJevBody('mind blown', merged);
+    expect(Object.keys(body.questions.m0.criteria)).toEqual(['local-a', 'meme:0']);
+  });
+
+  it('Jev 可以选到 memecub 的候选', async () => {
+    const { parseJevAnswer } = await import('./sticker.js');
+    const merged = [
+      { id: 'local-a', label: '本地' },
+      { id: 'meme:0', label: 'Mind Blown' },
+    ];
+    const ans = parseJevAnswer({ answers: { m0: { choice: 'meme:0', confidence: 0.9 } } }, merged);
+    expect(ans?.id).toBe('meme:0');
+  });
+
+  it('memecub 失败时只用本地候选（不崩）', async () => {
+    const { pickStickerMerged } = await import('./sticker.js');
+    const boom = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
+    const r = await pickStickerMerged('无语', { apiKey: '', fetchImpl: boom });
+    if (r) expect(r.origin).toBe('local');
+  });
+});

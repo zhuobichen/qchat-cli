@@ -32,7 +32,7 @@ export interface McpBackend {
   /** 写入长期记忆（默认禁用，见 McpOptions.allowMemoryWrite） */
   rememberMemory(args: { text: string; scope?: string; weight?: number }): Promise<unknown>;
   /** 真正发送表情 */
-  sendSticker(args: { kind: 'private' | 'group'; target: number; stickerId: string; label: string }): Promise<unknown>;
+  sendSticker(args: { kind: 'private' | 'group'; target: number; stickerId: string; label: string; remoteUrl?: string }): Promise<unknown>;
 }
 
 /** 群发开关：默认关闭，只能在进程内显式打开（MCP 场景不给模型这个能力） */
@@ -198,7 +198,7 @@ export async function handleMessage(
       return ok(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'qchat-cli', version: '0.24.2' },
+        serverInfo: { name: 'qchat-cli', version: '0.24.3' },
       });
 
     case 'ping':
@@ -301,7 +301,8 @@ export async function handleMessage(
                 });
               }
               const ctk = makeToken();
-              const summary = `将发到${where} ${target}：表情「${picked.label}」（${picked.source}，id ${picked.id.slice(0, 8)}…）`;
+              const srcNote = (picked as any).remoteUrl ? 'memecub 在线' : picked.source;
+              const summary = `将发到${where} ${target}：表情「${picked.label}」（${srcNote}，id ${String(picked.id).slice(0, 12)}…）`;
               pending.set(ctk, {
                 args: { kind, target, text: `sticker:${picked.id}` },
                 summary,
@@ -328,7 +329,10 @@ confirmation_token: ${ctk}
             }
             pending.delete(token);
             pendingStickers.delete(token);
-            const sent = await backend.sendSticker({ kind, target, stickerId: sticker.id, label: sticker.label });
+            const sent = await backend.sendSticker({
+              kind, target, stickerId: sticker.id, label: sticker.label,
+              ...((sticker as any).remoteUrl ? { remoteUrl: (sticker as any).remoteUrl } : {}),
+            });
             return ok(id, { content: [{ type: 'text', text: JSON.stringify(sent ?? { ok: true }, null, 2) }] });
           }
 

@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { authManager } from '../core/auth.js';
 import { runStdioServer, type McpBackend } from '../core/mcp-server.js';
 import { fetchGroupMessages } from '../core/history.js';
@@ -6,7 +8,7 @@ import { searchDocs } from '../core/search-index.js';
 import { buildDigest } from '../core/digest.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import { safetyManager } from '../core/safety.js';
-import { pickSticker, stickerFile } from '../core/sticker.js';
+import { pickStickerMerged, stickerFile } from '../core/sticker.js';
 import { MemoryStore, recallMemories, filterByKeyword } from '../core/memory.js';
 
 /**
@@ -89,22 +91,53 @@ function makeBackend(): McpBackend {
         if (!path) throw new Error(`表情 ${stickerId} 不存在`);
         return { id: stickerId, label: '(指定)', source: 'explicit' };
       }
-      const picked = await pickSticker(String(intent ?? ''));
-      if (!picked) throw new Error('表情库里没有匹配的候选');
-      if (!stickerFile(picked.id)) throw new Error('表情文件缺失');
+      // 本地库 + memecub 的候选一起交给 Jev 横向比较
+      const picked = await pickStickerMerged(String(intent ?? ''));
+      if (!picked) throw new Error('表情库和 memecub 都没有匹配的候选');
+      if (picked.origin === 'memecub' && picked.remoteUrl) {
+        return {
+          id: picked.id,
+          label: picked.label,
+          source: 'memecub',
+          remoteUrl: picked.remoteUrl,
+        };
+      }
+      if (!stickerFile(picked.id)) throw new Error(`表情文件缺失：${picked.id}`);
       return { id: picked.id, label: picked.label, source: picked.source };
     },
 
-    async sendSticker({ kind, target, stickerId }) {
+    async sendSticker({ kind, target, stickerId, remoteUrl }) {
       if (!safetyManager.isAllowed(target)) {
         throw new Error(`会话 ${target} 未授权发送（先跑 qce safety allow ${target}）`);
       }
-      const path = stickerFile(stickerId);
-      if (!path) throw new Error(`表情文件不存在：${stickerId}`);
+
+      let path: string | null = null;
+      if (remoteUrl) {
+        // memecub 的图：下载到临时目录再发
+        // 别写用户目录（低权限进程会 EPERM）；放项目内的 output/memes
+        const dir = join(process.cwd(), 'output', 'memes');
+        mkdirSync(dir, { recursive: true });
+        const res = await fetch(String(remoteUrl), { signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw new Error(`下载表情失败 HTTP ${res.status}`);
+        const ctype = String(res.headers.get('content-type') ?? '');
+        const ext = ctype.includes('png') ? 'png'
+          : ctype.includes('gif') ? 'gif'
+          : ctype.includes('webp') ? 'webp' : 'jpg';
+        path = join(dir, `meme-${Date.now()}.${ext}`);
+        writeFileSync(path, Buffer.from(await res.arrayBuffer()));
+      } else {
+        path = stickerFile(String(stickerId));
+        if (!path) throw new Error(`表情文件不存在：${stickerId}`);
+      }
+
       const message = [{ type: 'image', data: { file: path } }] as any;
       if (kind === 'group') await client.sendGroupMessage(target, message);
       else await client.sendPrivateMessage(target, message);
-      return { ok: true, kind, target, stickerId, sentAt: new Date().toISOString() };
+      return {
+        ok: true, kind, target, stickerId,
+        ...(remoteUrl ? { source: 'memecub', remoteUrl } : {}),
+        sentAt: new Date().toISOString(),
+      };
     },
 
     async listGroups() {
