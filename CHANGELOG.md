@@ -2,6 +2,25 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.7] - 2026-11-07
+
+### Added
+
+- **项目级 `.env` 支持**：`qce` 与 `scripts/*.mjs` 启动时自动 `process.loadEnvFile('.env')`
+  - 用 Node 自带能力，不引入 dotenv 依赖
+  - 文件不存在静默跳过（"没配 key" 不该变成 "命令起不来"）
+  - `.env` 已加入 `.gitignore`；`.env.example` 补充 `DASHSCOPE_API_KEY` / `JEV_API_KEY` 说明
+  - 好处：`node scripts/label-emojis.mjs` 零配置直接跑，不用每次手动 export
+
+### Notes
+
+- 打标链路确认走**阿里官方直连**（`dashscope.aliyuncs.com`），非 302.AI 中转；
+  与语义检索（`text-embedding-v4`）、语音合成（`qwen3-tts-flash`）共用同一把 key
+- **老库 233 张的标签不重标**：`searchEmojiLibrary` 是纯子串匹配（按命中词数打分），
+  现有标签本身是关键词堆（`熊猫头吃面嘲讽戏精演技`），重标成自然语言反而丢关键词
+  （实测千问版本会漏掉"金鱼"这类细节）
+- 检索回归实测：无语/开心/生气/嘲讽/委屈/震惊/摸鱼/安慰/狗/猫/睡觉/吃饭 **12/12 有命中**
+
 ## [0.24.6] - 2026-11-07
 
 ### Changed

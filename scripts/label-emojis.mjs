@@ -24,6 +24,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+// 读项目根目录的 .env（和 cli.ts 一致；脚本不经过 cli 所以自己加载）
+try {
+  process.loadEnvFile('.env');
+} catch {
+  /* 没有 .env 就走环境变量 */
+}
+
 const LIB = join(process.cwd(), 'private', 'emoji-library');
 const MANIFEST = join(LIB, 'manifest.json');
 const QWEN_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';

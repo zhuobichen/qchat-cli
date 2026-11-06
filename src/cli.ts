@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 
+// 加载项目根目录的 .env（Node 20.12+ 的 process.loadEnvFile）
+// 用它而不是 dotenv：少一个依赖，而且这是 Node 自带能力。
+// 文件不存在就静默跳过——不让"没配 key"变成"命令起不来"。
+try {
+  process.loadEnvFile('.env');
+} catch {
+  /* 没有 .env，或 Node 版本不支持：走环境变量 */
+}
+
 import { Command } from 'commander';
 import { loginCommand } from './commands/login.js';
 import { listCommand } from './commands/list.js';
@@ -40,7 +49,7 @@ const program = new Command();
 program
   .name('qce')
   .description('QQ Chat Exporter CLI - 导出 QQ 聊天记录')
-  .version('0.24.4')
+  .version('0.24.7')
   .option('--account <name>', '本次命令连接的账号（见 qce account list）');
 
 // 所有子命令执行前解析 --account，让 authManager 面向对应实例

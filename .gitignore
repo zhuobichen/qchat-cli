@@ -60,3 +60,6 @@ local-qr*.png
 .qce-asr-tmp/
 .tts-out/
 private/emoji-candidates/
+
+# 本地密钥（不要提交）
+.env
