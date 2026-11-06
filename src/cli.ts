@@ -11,6 +11,7 @@ import { indexCommand } from './commands/index-cmd.js';
 import { alertCommand } from './commands/alert.js';
 import { filesCommand } from './commands/files.js';
 import { asrCommand } from './commands/asr.js';
+import { memoryCommand } from './commands/memory.js';
 import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
@@ -31,7 +32,7 @@ const program = new Command();
 program
   .name('qce')
   .description('QQ Chat Exporter CLI - 导出 QQ 聊天记录')
-  .version('0.14.0')
+  .version('0.15.0')
   .option('--account <name>', '本次命令连接的账号（见 qce account list）');
 
 // 所有子命令执行前解析 --account，让 authManager 面向对应实例
@@ -51,6 +52,7 @@ indexCommand(program);
 alertCommand(program);
 filesCommand(program);
 asrCommand(program);
+memoryCommand(program);
 backupCommand(program);
 sendCommand(program);
 monitorCommand(program);

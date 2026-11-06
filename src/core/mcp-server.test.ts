@@ -9,6 +9,8 @@ function makeBackend(): McpBackend {
     send: vi.fn(async () => ({ ok: true })),
     pickSticker: vi.fn(async ({ stickerId }: any) => ({ id: stickerId ?? 'a'.repeat(64), label: '测试表情', source: stickerId ? 'explicit' : 'jev' })),
     sendSticker: vi.fn(async () => ({ ok: true })),
+    recallMemory: vi.fn(async () => [{ id: 'm1', text: '用户喜欢冰美式', score: 0.9 }]),
+    rememberMemory: vi.fn(async () => ({ id: 'm2', added: true })),
   };
 }
 
@@ -24,7 +26,9 @@ describe('MCP server', () => {
   it('tools/list 暴露三个工具且带 inputSchema', async () => {
     const res = await handleMessage(makeBackend(), { jsonrpc: '2.0', id: 2, method: 'tools/list' });
     const tools = (res?.result as { tools: typeof TOOLS }).tools;
-    expect(tools.map((t) => t.name)).toEqual(['search_messages', 'group_digest', 'list_groups', 'send_sticker', 'send_message']);
+    expect(tools.map((t) => t.name)).toEqual([
+      'search_messages', 'group_digest', 'list_groups', 'recall_memory', 'remember_memory', 'send_sticker', 'send_message',
+    ]);
     for (const t of tools) expect(t.inputSchema).toBeTypeOf('object');
   });
 
@@ -227,5 +231,41 @@ describe('send_sticker（两阶段确认 + Jev 选择）', () => {
     const res = await callWith(backend, { target: 10001000, intent: 'x' });
     expect((res?.result as any).isError).toBe(true);
     expect((res?.result as any).content[0].text).toContain('表情库为空');
+  });
+});
+
+describe('memory 工具', () => {
+  const callWith = (backend: McpBackend, name: string, args: any, options: any = {}) =>
+    handleMessage(backend, {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name, arguments: args },
+    }, options);
+  const call = (name: string, args: any, options: any = {}) => callWith(makeBackend(), name, args, options);
+
+  it('recall_memory 只读返回结果', async () => {
+    const res = await call('recall_memory', { scope: 'g1', limit: 3 });
+    const text = (res?.result as any).content[0].text;
+    expect(text).toContain('冰美式');
+  });
+
+  it('remember_memory 默认被禁用（防记忆投毒）', async () => {
+    const backend = makeBackend();
+    const res = await callWith(backend, 'remember_memory', { text: '记住这个' });
+    expect((res?.result as any).isError).toBe(true);
+    expect((res?.result as any).content[0].text).toContain('记忆写入已在服务端禁用');
+    expect(backend.rememberMemory).not.toHaveBeenCalled();
+  });
+
+  it('打开 allowMemoryWrite 后可写', async () => {
+    const backend = makeBackend();
+    const res = await callWith(backend, 'remember_memory', { text: '记住这个', scope: 'g1' }, { allowMemoryWrite: true });
+    expect((res?.result as any).isError).toBeUndefined();
+    expect(backend.rememberMemory).toHaveBeenCalledWith({ text: '记住这个', scope: 'g1' });
+    expect((res?.result as any).content[0].text).toContain('m2');
+  });
+
+  it('空文本与超长文本被拒', async () => {
+    expect(((await call('remember_memory', { text: ' ' }, { allowMemoryWrite: true }))?.result as any).isError).toBe(true);
+    expect(((await call('remember_memory', { text: 'x'.repeat(501) }, { allowMemoryWrite: true }))?.result as any).isError).toBe(true);
   });
 });

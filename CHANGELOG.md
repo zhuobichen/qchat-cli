@@ -2,6 +2,32 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.0] - 2026-11-06
+
+### Added
+
+- **会淡忘的长期记忆（练自 dsh-fish-memory 的机制，重写实现）**
+  - `src/core/memory.ts`：半衰期衰减（默认 30 天减半）/ TTL 淘汰（默认 180 天）/ 复习效应（召回后重新计时）/ 低权重过滤 / 关键词与 scope 过滤（20 个单测）
+  - `qce memory`：`add` / `recall` / `list` / `stats` / `forget`
+  - **接入对话上下文**：`group-context` / `private-context` 的 `buildAgentInput` 会把该 scope 下最要紧的 5 条注入，且排在「仅数据」包裹之前
+- **MCP `recall_memory`（只读）/ `remember_memory`**
+  - `remember_memory` **默认禁用**，需 `MCP_ALLOW_MEMORY_WRITE=1`：长期记忆会持续进入上下文，等于可持久化的提示词注入通道，不能给模型默认写权限
+  - 单条长度上限 500 字
+
+### Notes（生态调研结论）
+
+- `dsh-fish-memory`（★483, JS）：只借鉴半衰期淡忘的思路，未复制代码
+- `astrbot_plugin_proactive_chat`（★524）是 **AGPL-3.0**，代码不可并入 MIT 项目，只参考设计
+- `astrbot_plugin_meme_manager`（★548, MIT）：自动收集思路可借鉴，我们已有表情库 + Jev 选择
+- QQ 空间：原 `Zhalslar/astrbot_plugin_qzone` 已 404，社区替代为 `qzone_ultra`（★59）；我们已有 `qzone` 命令，无需引入
+- `dafeiyu-astrbot`（★729, MIT）：整套部署全家桶，不是可复用模块；TTS 部分可作为下一步参考
+
+### Verified
+
+- `qce memory add/recall/stats` 实跑：两条记忆按 0.90 / 0.80 权重召回
+- MCP：`recall_memory` 返回带 score 的记忆；`remember_memory` 返回「记忆写入已在服务端禁用」
+- `vitest run src`：17 文件 / **207 用例**
+
 ## [0.14.0] - 2026-11-06
 
 ### Added

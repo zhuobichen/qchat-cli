@@ -1,4 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { MemoryStore, recallMemories, renderMemories } from './memory.js';
+import { defaultIndexRoot } from './message-store.js';
 import { wrapUntrusted, UNTRUSTED_CONTENT_RULE } from './injection-guard.js';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -113,7 +115,13 @@ export class PrivateContextStore {
     const content = this.format((this.messages.get(userId) || []).slice(-limit));
     const capped = content.length > maxChars ? content.slice(-maxChars) : content;
     if (capped.trim() === '') return '';
-    return `${UNTRUSTED_CONTENT_RULE}
+    // 长期记忆（会淡忘）：只注入当前范围里最要紧的几条
+    const memStore = new MemoryStore(defaultIndexRoot());
+    const memories = renderMemories(recallMemories(memStore.load(), { scope: String(userId), limit: 5 }));
+    const prefix = memories ? `${memories}
+
+` : '';
+    return `${prefix}${UNTRUSTED_CONTENT_RULE}
 
 ${wrapUntrusted(capped, { sender: String(userId), maxChars })}`;
   }

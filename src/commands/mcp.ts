@@ -7,6 +7,7 @@ import { buildDigest } from '../core/digest.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import { safetyManager } from '../core/safety.js';
 import { pickSticker, stickerFile } from '../core/sticker.js';
+import { MemoryStore, recallMemories, filterByKeyword } from '../core/memory.js';
 
 /**
  * 把 OneBot 客户端包装成 MCP backend。
@@ -63,6 +64,25 @@ function makeBackend(): McpBackend {
       return { ok: true, kind, target, sentAt: new Date().toISOString() };
     },
 
+    async recallMemory({ scope, keyword, limit }) {
+      const store = new MemoryStore(defaultIndexRoot());
+      const all = store.load();
+      const filtered = keyword ? filterByKeyword(all, keyword) : all;
+      return recallMemories(filtered, { ...(scope ? { scope } : {}), limit: limit ?? 5 });
+    },
+
+    async rememberMemory({ text, scope, weight }) {
+      const store = new MemoryStore(defaultIndexRoot());
+      const now = Math.floor(Date.now() / 1000);
+      const { record, added } = store.remember({
+        scope: scope ?? 'global',
+        text,
+        createdAt: now,
+        weight: Math.min(1, Math.max(0, weight ?? 0.7)),
+      });
+      return { id: record.id, added };
+    },
+
     async pickSticker({ intent, stickerId }) {
       if (stickerId) {
         const path = stickerFile(stickerId);
@@ -112,6 +132,8 @@ export function mcpCommand(program: Command): void {
       console.error('qce mcp: ready (stdio)');
       const allowGroupSend = process.env.MCP_ALLOW_GROUP_SEND === '1';
       if (!allowGroupSend) console.error('qce mcp: 群发已禁用（MCP_ALLOW_GROUP_SEND=1 可打开）');
-      runStdioServer(makeBackend(), { stdin: process.stdin, stdout: process.stdout }, { allowGroupSend });
+      const allowMemoryWrite = process.env.MCP_ALLOW_MEMORY_WRITE === '1';
+      if (!allowMemoryWrite) console.error('qce mcp: 记忆写入已禁用（MCP_ALLOW_MEMORY_WRITE=1 可打开）');
+      runStdioServer(makeBackend(), { stdin: process.stdin, stdout: process.stdout }, { allowGroupSend, allowMemoryWrite });
     });
 }

@@ -145,7 +145,17 @@ qce files stats 123456789             # size breakdown by extension
 qce files download 123456789 课件1.pdf -o ./downloads
 ```
 
-**7) Automation & ops**
+**7) Long-term memory that fades**
+
+```bash
+qce memory add "likes black coffee, no sugar" -s 10001000 -w 0.9
+qce memory recall -s 10001000        # ranked by decayed weight
+qce memory list / stats / forget
+```
+
+Each memory carries a timestamp and weight, decays with a **half-life** (30 days to halve, 180 to expire), and resets its clock when recalled. Bot contexts automatically inject the heaviest few — the original wording survives, it just fades.
+
+**8) Automation & ops**
 
 ```bash
 qce send group <group> "..."             # requires `qce safety enable` + allowlist first

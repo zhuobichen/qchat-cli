@@ -1,4 +1,6 @@
 import { MessageSegment, OneBotEvent } from './onebot-client.js';
+import { MemoryStore, recallMemories, renderMemories } from './memory.js';
+import { defaultIndexRoot } from './message-store.js';
 import { wrapUntrusted, UNTRUSTED_CONTENT_RULE } from './injection-guard.js';
 
 interface ContextMessage {
@@ -79,8 +81,14 @@ export class GroupContextStore {
     const content = this.format(history);
     const capped = content.length > maxChars ? content.slice(-maxChars) : content;
     if (capped.trim() === '') return '';
+    // 长期记忆（会淡忘）：只注入当前范围里最要紧的几条
+    const memStore = new MemoryStore(defaultIndexRoot());
+    const memories = renderMemories(recallMemories(memStore.load(), { scope: String(groupId), limit: 5 }));
     // 群消息是外部内容：包裹成「仅数据」块，并附边界规则
-    return `${UNTRUSTED_CONTENT_RULE}
+    const prefix = memories ? `${memories}
+
+` : '';
+    return `${prefix}${UNTRUSTED_CONTENT_RULE}
 
 ${wrapUntrusted(capped, { groupId, sender: '群成员', maxChars })}`;
   }

@@ -148,7 +148,18 @@ qce files stats 123456789             # 体积按扩展名分布
 qce files download 123456789 课件1.pdf -o ./downloads
 ```
 
-**7）自动化与运维**
+**7）会淡忘的长期记忆**
+
+```bash
+qce memory add "喜欢冰美式不加糖" -s 10001000 -w 0.9
+qce memory recall -s 10001000        # 按衰减权重召回（越久越淡）
+qce memory list / stats / forget     # 查看、统计、遗忘
+qce memory forget                    # 清理过期记忆
+```
+
+每条记忆带时间与权重，按**半衰期**衰减（默认 30 天减半、180 天过期），被召回一次就重新计时。启用后 `group-bot` / `private-bot` 会自动把最要紧的几条注入上下文——原话还在，只是慢慢变淡，而不是压缩成一句摘要。
+
+**8）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）
