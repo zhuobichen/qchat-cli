@@ -2,6 +2,20 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.1] - 2026-11-06
+
+### Fixed
+
+- **`napcat start` 一直显示「等待账号登录」**：轮询 OneBot 的 `get_login_info` 时**没带 Bearer token**，接口返回 401 → 解析成 null → 永远等不到（其实早就登上了）。新增 `readOnebotToken()`，启动前从 `config/onebot11_<uin>.json` 读 token 并带上
+- **`napcat start` 低权限下 EPERM 崩溃**：`loadNapCat.js` 已存在且内容一致时不再重写（它是��次性启动垫片）；写不了时给出明确警告而不是崩溃
+- **新增启动前权限自检**：目标目录不可写时直接提示「请用管理员权限运行 start-napcat-admin.cmd」，不再让用户对着旧二维码反复扫码
+- **`start-napcat-admin.cmd` 编码**：原文件是 UTF-8，cmd 解析中文注释乱码导致 `cd` 失败、跑到了 `C:\Windows\System32` → 改为纯 ASCII + CRLF
+
+### Verified
+
+- 重启电脑后完整恢复：NapCat(3000) / api_v2(9880) / qq-watch / DSH(3080) 全部在线
+- watcher 重启即抓到 3 条新消息并汇总投递
+
 ## [0.24.0] - 2026-11-06
 
 ### Added

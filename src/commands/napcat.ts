@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { spawn, execSync } from 'child_process';
-import { existsSync, writeFileSync, readFileSync, readdirSync, mkdirSync } from 'fs';
+import { existsSync, writeFileSync, readFileSync, readdirSync, mkdirSync, unlinkSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import http from 'http';
 import os from 'os';
@@ -54,6 +54,22 @@ function findQQPath(): string | null {
 
 function getNapCatUrl(host = '127.0.0.1', port = NAPCAT_PORT) {
   return `http://${host}:${port}`;
+}
+
+/** 读取该账号 OneBot 配置里的 token（没有就返回空） */
+function readOnebotToken(napcatDir: string, uin?: string): string {
+  try {
+    const dir = join(napcatDir, 'config');
+    const files = uin ? [`onebot11_${uin}.json`] : readdirSync(dir).filter((f) => f.startsWith('onebot11_'));
+    for (const f of files) {
+      try {
+        const cfg = JSON.parse(readFileSync(join(dir, f), 'utf-8'));
+        const token = cfg?.network?.httpServers?.[0]?.token;
+        if (token) return String(token);
+      } catch {}
+    }
+  } catch {}
+  return '';
 }
 
 /**
@@ -134,9 +150,13 @@ function stopNapcatByDir(dir: string): number {
   return killed;
 }
 
-async function httpGet(url: string): Promise<any> {
+async function httpGet(url: string, token?: string): Promise<any> {
   return new Promise((resolve, _reject) => {
-    const req = http.get(url, (res) => {
+    const headers: Record<string, string> = {};
+    // NapCat 的 OneBot HTTP 接口要 Bearer token，缺了会 401 → 解析成 null
+    // → 启动流程会一直显示「等待登录」，其实早就登上了
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const req = http.get(url, { headers }, (res) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
@@ -231,8 +251,38 @@ export function napcatCommand(program: Command): void {
       };
 
       // 创建 loadNapCat.js（NapCat 启动脚本）
+      // 已存在且内容一致就不重写：低完整性进程可能无权限写用户目录（EPERM），
+      // 而这个文件本来就是一次性的启动垫片，重写没有意义。
       const loadScript = `(async () => {await import("file:///${mainScript.replace(/\\/g, '/')}")})()`;
-      writeFileSync(env.NAPCAT_LOAD_PATH, loadScript);
+      let needWrite = true;
+      try {
+        needWrite = readFileSync(env.NAPCAT_LOAD_PATH, 'utf8') !== loadScript;
+      } catch {
+        needWrite = true;
+      }
+      if (needWrite) {
+        try {
+          writeFileSync(env.NAPCAT_LOAD_PATH, loadScript);
+        } catch (error) {
+          console.log(chalk.yellow(`[warn] 写入 loadNapCat.js 失败（${(error as Error).message}）`));
+          console.log(chalk.dim('  若该文件已存在且内容正确，可忽略此警告；否则请用管理员权限运行一次。'));
+        }
+      }
+
+      // 启动前自检：低完整性进程写不了用户目录时，NapCat 会静默失败，
+      // 表现是「弹出旧二维码 / 扫了说过期」。先把话说清楚，别让人白扫。
+      try {
+        const probe = join(napcatDir, 'cache', '.write-probe');
+        mkdirSync(join(napcatDir, 'cache'), { recursive: true });
+        writeFileSync(probe, 'x');
+        readdirSync(join(napcatDir, 'cache')).forEach((f) => {
+          if (f === '.write-probe') { try { unlinkSync(join(napcatDir, 'cache', f)); } catch {} }
+        });
+      } catch {
+        console.log(chalk.yellow('[warn] 无权写入 ' + napcatDir));
+        console.log(chalk.dim('  NapCat 需要写日志/二维码/缓存；低权限启动会静默失败，表现为二维码是旧的。'));
+        console.log(chalk.dim('  请用管理员权限运行 start-napcat-admin.cmd。'));
+      }
 
       // 启动 NapCat（注入 QQ；-q 指定账号快速登录）
       const spawnArgs = uin ? [qqPath, injectDll, '-q', uin] : [qqPath, injectDll];
@@ -317,7 +367,7 @@ export function napcatCommand(program: Command): void {
       let firstLoginUin = '';
 
       while (Date.now() - startTime < STARTUP_TIMEOUT_MS) {
-        const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`);
+        const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`, readOnebotToken(napcatDir, uin));
         const infoUin = info?.data?.user_id ? String(info.data.user_id) : '';
         if (info?.data?.nickname && (!uin || infoUin === uin)) {
           ready = true;
@@ -342,7 +392,7 @@ export function napcatCommand(program: Command): void {
       if (ready) {
         let loggedInUin = firstLoginUin;
         if (!firstLoginUin) {
-          const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`);
+          const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`, readOnebotToken(napcatDir, uin));
           loggedInUin = String(info.data.user_id);
           spinner.succeed(`登录成功 — ${info.data.nickname} (${info.data.user_id})`);
         } else {
