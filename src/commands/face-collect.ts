@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { authManager } from '../core/auth.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
@@ -10,6 +11,7 @@ import {
 import {
   pickUnlabeled, describeImage, readEmojiBytes, loadManifestFile, saveManifest,
 } from '../core/emoji-label.js';
+import { addDirectoryToLibrary, loadLibraryManifest } from '../core/emoji-add.js';
 
 const LIBRARY_DIR = 'private/emoji-library';
 const CANDIDATE_DIR = 'private/emoji-candidates';
@@ -116,6 +118,54 @@ export function faceCommandExtended(program: Command): void {
         console.log(chalk.green(`已并入表情库：+${added}，现有 ${total} 个`));
       } else if (candidates.length > 0) {
         console.log(chalk.dim(`确认无误后执行：qce face collect ${groupId} --apply`));
+      }
+    });
+
+  target
+    .command('add <dir>')
+    .description('把一个目录的图片直接导进本地表情库（send_sticker 立即可用，无需账号）')
+    .option('-l, --label <prefix>', '标签前缀，方便以后按关键词搜到', '')
+    .option('--max-mb <n>', '单张大小上限（MB）', '2')
+    .option('--dry', '只看会加哪些，不落盘')
+    .action((dir, options) => {
+      if (!existsSync(dir)) {
+        console.log(chalk.red(`目录不存在：${dir}`));
+        return;
+      }
+      const manifest = loadLibraryManifest(LIBRARY_DIR);
+      const before = manifest.emojis.length;
+
+      if (options.dry) {
+        // 干跑：只统计，不写任何文件
+        const known = new Set(manifest.emojis.map((e) => e.hash));
+        const maxBytes = Number(options.maxMb || 2) * 1024 * 1024;
+        let willAdd = 0;
+        const reasons: string[] = [];
+        for (const name of readdirSync(dir)) {
+          const full = join(dir, name);
+          const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
+          if (!['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) continue;
+          const buf = readFileSync(full);
+          if (buf.length > maxBytes) { reasons.push(`${name}: 超过 ${Math.round(maxBytes / 1024 / 1024)}MB`); continue; }
+          const h = createHash('sha256').update(buf).digest('hex');
+          if (known.has(h)) { reasons.push(`${name}: 已存在`); continue; }
+          willAdd += 1;
+        }
+        console.log(chalk.cyan(`会新增 ${willAdd} 张，跳过 ${reasons.length} 张`));
+        for (const r of reasons.slice(0, 5)) console.log(chalk.dim(`  ${r}`));
+        return;
+      }
+
+      const { added, skipped } = addDirectoryToLibrary(dir, LIBRARY_DIR, manifest, {
+        ...(options.label ? { labelPrefix: String(options.label) } : {}),
+        maxBytes: Number(options.maxMb || 2) * 1024 * 1024,
+      });
+
+      console.log(chalk.green(`已导入 ${added.length} 张，本地库 ${before} → ${before + added.length}`));
+      for (const s of skipped.slice(0, 8)) console.log(chalk.dim(`  跳过 ${s.file}: ${s.reason}`));
+      if (skipped.length > 8) console.log(chalk.dim(`  … 还有 ${skipped.length - 8} 张被跳过`));
+      if (added.length > 0) {
+        console.log(chalk.dim('提示：标签目前是「前缀 + 文件名」，可用 qce face label 补更好的描述'));
       }
     });
 

@@ -2,6 +2,26 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.4] - 2026-11-07
+
+### Added
+
+- **`qce face add <dir>`**：把目录的图片直接导进本地表情库（`send_sticker` 立即可用，无需账号）
+  - 按内容 sha256 去重、按魔数校正扩展名、大小上限（默认 2MB）、`--dry` 干跑
+  - 与 `face import` 的分工：那个是上传到 QQ 收藏表情（走腾讯 API），这个是纯本地
+- **`scripts/ocr-label-emojis.mjs`**：OCR 表情图里的文字当标签
+  - DeepSeek 那批是「思考框 + 台词」形式，图里的文字就是梗的意思
+  - 实测 153 张：**139 张成功打标**，14 张无文字
+  - 自动过滤「已思考(用时 N 秒)」「知乎@xxx」「made by」等噪音
+
+### Changed
+
+- 本地表情库 **232 → 385 张**（导入 DeepSeek 157 张，去重后 153）
+
+### Verified
+
+- 语义检索命中：`笑出声` / `死掉了` / `瞎编` / `装无辜` / `残忍的生物` 全部正确
+
 ## [0.24.3] - 2026-11-07
 
 ### Changed
