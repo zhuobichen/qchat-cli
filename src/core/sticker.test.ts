@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJevBody, parseJevAnswer, chooseWithJev, pickSticker, candidatesFor, type StickerCandidate } from './sticker.js';
+import { buildJevBody, parseJevAnswer, chooseWithJev, pickSticker, candidatesFor, type StickerCandidate, bigrams, emotionHints } from './sticker.js';
 
 const cands: StickerCandidate[] = [
   { id: 'a'.repeat(64), label: '开心 庆祝 撒花' },
@@ -128,5 +128,61 @@ describe('pickStickerMerged（本地库 + memecub 一起挑）', () => {
     const boom = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
     const r = await pickStickerMerged('无语', { apiKey: '', fetchImpl: boom });
     if (r) expect(r.origin).toBe('local');
+  });
+});
+
+describe('bigrams 中文切词', () => {
+  it('切成二元组', () => {
+    expect(bigrams('笑死我')).toEqual(['笑死', '死我']);
+  });
+
+  it('去掉标点空白', () => {
+    expect(bigrams('笑，死 我')).toEqual(['笑死', '死我']);
+  });
+
+  it('单字保留', () => {
+    expect(bigrams('笑')).toEqual(['笑']);
+  });
+
+  it('空输入', () => {
+    expect(bigrams('')).toEqual([]);
+  });
+});
+
+describe('emotionHints 同义扩展', () => {
+  it('"笑死我了"扩出笑相关词', () => {
+    const h = emotionHints('笑死我了');
+    expect(h).toContain('笑死我了');
+    expect(h.some((x) => x.includes('笑'))).toBe(true);
+  });
+
+  it('"无语"扩出震惊/呆滞', () => {
+    const h = emotionHints('无语了');
+    expect(h).toContain('震惊');
+  });
+
+  it('无情绪词时只有原句', () => {
+    expect(emotionHints('abc')).toEqual(['abc']);
+  });
+});
+
+describe('candidatesFor 只返回真匹配', () => {
+  it('匹配不上时返回空，而不是凑数', () => {
+    expect(candidatesFor('zzzzzzqqqq')).toEqual([]);
+  });
+
+  it('"笑死我了"能找到笑类表情', () => {
+    const c = candidatesFor('笑死我了');
+    expect(c.length).toBeGreaterThan(0);
+    expect(c.some((x) => /笑|哈哈/.test(x.label))).toBe(true);
+  });
+
+  it('"生气"能找到愤怒类表情', () => {
+    const c = candidatesFor('生气');
+    expect(c.some((x) => /生气|愤怒|怼/.test(x.label))).toBe(true);
+  });
+
+  it('结果不超过 limit', () => {
+    expect(candidatesFor('笑死我了', 3).length).toBeLessThanOrEqual(3);
   });
 });

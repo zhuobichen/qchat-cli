@@ -1,6 +1,6 @@
 {
   "name": "qchat-cli",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "CLI tool to export QQ chat history",
   "type": "module",
   "main": "./dist/cli.js",

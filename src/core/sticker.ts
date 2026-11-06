@@ -25,8 +25,82 @@ export interface JevChoice {
 }
 
 /** 从库里取候选（复用已有搜索，最多 5 个） */
+/**
+ * 把中文意图切成二元组。
+ *
+ * 为什么需要：`searchEmojiLibrary` 按空格分词后做子串匹配，
+ * 中文整句（"哈哈哈哈哈太惨了"）匹配不上任何标签，于是它退回"最近导入"的条目——
+ * 结果就是给"笑到不行"配了一张"雪地轮椅上瘫坐"。
+ * 中文没空格，得自己切。
+ */
+export function bigrams(text: string): string[] {
+  const clean = String(text ?? '').replace(/[\s，。！？、,.!?~～…—\-""''（）()\[\]【】]+/g, '');
+  const out: string[] = [];
+  for (let i = 0; i + 1 < clean.length; i += 1) {
+    out.push(clean.slice(i, i + 2));
+  }
+  // 单字意图（如"笑"）也保留，否则两字以下永远无候选
+  if (out.length === 0 && clean.length === 1) out.push(clean);
+  return out;
+}
+
+/**
+ * 取候选表情：只保留**真的有匹配**的。
+ *
+ * 绝不返回"没匹配但凑数"的条目——配一张不搭的表情比不配更糟。
+ */
+/**
+ * 情绪同义词扩展。
+ *
+ * 为什么要它：库里标签是"哈哈哈哈哈，我直接笑出声"，而回复是"笑死我了"——
+ * 二元组对不上（笑死 vs 笑出）。等价说法在聊天里太常见，纯字面匹配召回太低。
+ * 这里是确定性映射，不加延迟、不花钱。
+ */
+const EMOTION_SYNONYMS: Array<[RegExp, string[]]> = [
+  [/笑|哈哈|乐|233|搞笑|太惨|憋不住/i, ['笑', '哈哈', '嘲讽', '无语']],
+  [/无语|服了|离谱|绝了|无奈|摆烂|崩了/i, ['无语', '震惊', '呆滞', '无奈', '摆烂']],
+  [/怒|生气|火大|气死|怼|滚|骂/i, ['生气', '愤怒', '怼人', '警告']],
+  [/哭|委屈|难过|难受|惨|破防|emo/i, ['委屈', '哭', '难过', '求安慰']],
+  [/震惊|惊|傻|懵|卧槽|我操|啊这/i, ['震惊', '懵圈', '呆滞']],
+  [/开心|高兴|爽|好耶|棒|不错/i, ['开心', '高兴', '庆祝']],
+  [/累|困|睡|躺|瘫|摆/i, ['累', '睡', '瘫', '躺平']],
+  [/可爱|萌|亲亲|抱抱|喜欢|爱/i, ['可爱', '抱抱', '撒娇']],
+  [/吃|饿|饭|喝|奶茶/i, ['吃', '饭', '美食']],
+  [/钱|穷|加班|工作|老板/i, ['钱', '加班', '穷']],
+];
+
+/** 从一句话里推可能的表情标签关键词（原句 + 命中的同义词组） */
+export function emotionHints(intent: string): string[] {
+  const hints = new Set<string>([intent]);
+  for (const [re, words] of EMOTION_SYNONYMS) {
+    if (re.test(intent)) {
+      for (const w of words) hints.add(w);
+    }
+  }
+  return [...hints];
+}
+
 export function candidatesFor(intent: string, limit = 5): StickerCandidate[] {
-  return searchEmojiLibrary(intent, limit).map((e) => ({ id: e.id, label: e.label }));
+  const seeds = emotionHints(intent);
+  const grams = seeds.flatMap((s2) => bigrams(s2));
+  if (grams.length === 0) return [];
+
+  const pool = new Map<string, { id: string; label: string }>();
+  for (const seed of seeds.slice(0, 6)) {
+    for (const e of searchEmojiLibrary(seed, 50)) pool.set(e.id, { id: e.id, label: e.label });
+  }
+
+  const scored = [...pool.values()]
+    .map((e) => {
+      const label = e.label.toLowerCase();
+      const score = grams.reduce((n, g) => n + (label.includes(g.toLowerCase()) ? 1 : 0), 0);
+      return { e, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return scored.map((x) => ({ id: x.e.id, label: x.e.label }));
 }
 
 /**

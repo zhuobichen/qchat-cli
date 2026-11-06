@@ -71,6 +71,7 @@ function loadConfig() {
     freeChat: raw.freeChat === true,
     freeChatProbability: Math.min(Math.max(raw.freeChatProbability ?? 0.35, 0), 1),
     maxRepliesPerHour: Math.max(raw.maxRepliesPerHour ?? 8, 1),
+    emojiChance: Math.min(Math.max(raw.emojiChance ?? 0.3, 0), 1),
     allowVoice: raw.allowVoice !== false,
     ttsEndpoint: raw.ttsEndpoint ?? '',
     ttsRefAudio: raw.ttsRefAudio ?? '',
@@ -210,6 +211,7 @@ async function loadCore() {
   core = {
     group: await imp('group-agent.js'),
     gate: await imp('reply-gate.js'),
+    sticker: await imp('sticker.js'),
     medium: await imp('reply-medium.js'),
     reliability: await imp('reliability.js'),
     tts: await imp('tts.js'),
@@ -420,6 +422,36 @@ async function processMessage(kind, peer, msg, history, self) {
       rt.push(Math.floor(Date.now() / 1000));
       state.replyTimes[key] = rt;
       log(`已回复 ${key}（${medium.medium}）`);
+
+      // 补一张表情：文字说完，配个图更像人在聊天
+      //
+      // 只在文字回复时配（语音后面再甩张图很奇怪），且按概率来——
+      // 每次都配会显得机械，隔几句来一张才自然。
+      if (medium.medium === 'text' && cfg.emojiChance > 0 && Math.random() < cfg.emojiChance) {
+        try {
+          const core = await loadCore();
+          const picked = await core.sticker.pickStickerMerged(replyText.slice(0, 60));
+          if (picked) {
+            let imgPath = null;
+            if (picked.origin === 'memecub' && picked.remoteUrl) {
+              imgPath = await downloadMeme(core, picked.remoteUrl);
+            } else {
+              imgPath = core.sticker.stickerFile(picked.id);
+            }
+            if (imgPath) {
+              await api(kind === 'group' ? 'send_group_msg' : 'send_private_msg',
+                kind === 'group'
+                  ? { group_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] }
+                  : { user_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] },
+                25000);
+              log(`  配图: ${picked.label.slice(0, 30)}（${picked.origin}）`);
+            }
+          }
+        } catch (e) {
+          // 配图失败不该影响已经发出去的文字
+          log(`  配图失败（忽略）: ${e.message}`);
+        }
+      }
     } catch (e) {
       breakerRecord(false);
       if (attempt < 3) {
@@ -431,6 +463,23 @@ async function processMessage(kind, peer, msg, history, self) {
         log(`发送失败，已进死信: ${e.message}`);
       }
     }
+  }
+}
+
+/** 下载 memecub 的图到本地，返回路径（失败返回 null） */
+async function downloadMeme(core, url) {
+  try {
+    const dir = join(cfg.outputDir ?? '.', 'memes');
+    mkdirSync(dir, { recursive: true });
+    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) return null;
+    const ctype = String(res.headers.get('content-type') ?? '');
+    const ext = ctype.includes('png') ? 'png' : ctype.includes('gif') ? 'gif' : ctype.includes('webp') ? 'webp' : 'jpg';
+    const p = join(dir, `meme-${Date.now()}.${ext}`);
+    writeFileSync(p, Buffer.from(await res.arrayBuffer()));
+    return p;
+  } catch {
+    return null;
   }
 }
 

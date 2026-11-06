@@ -1,17 +1,24 @@
 {
   "http": "http://127.0.0.1:3000",
-  "groups": [],
+  "groups": [
+    1134983058
+  ],
   "includePrivate": true,
   "allow": [
-    "1473517806"
+    "1473517806",
+    "1134983058"
   ],
   "intervalSec": 2,
   "maxAgeSec": 600,
-  "minReplyGapSec": 30,
-  "requireMentionInGroup": true,
+  "minReplyGapSec": 60,
+  "requireMentionInGroup": false,
   "allowVoice": true,
   "ttsEndpoint": "http://127.0.0.1:9880",
   "ttsRefAudio": "D:/github_project/ZhaoWen_GitHub维护/_tts/ref/user16k.wav",
   "ttsPromptText": "关注永雏塔菲关注永雏塔菲谢谢喵",
-  "outputDir": "D:/github_project/ZhaoWen_GitHub维护/_tts/out"
+  "outputDir": "D:/github_project/ZhaoWen_GitHub维护/_tts/out",
+  "freeChat": true,
+  "freeChatProbability": 0.35,
+  "maxRepliesPerHour": 8,
+  "emojiChance": 0.35
 }
