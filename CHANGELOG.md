@@ -2,6 +2,26 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.6] - 2026-11-07
+
+### Changed
+
+- **打标改用阿里千问 `qwen3-vl-plus`**（不占显存，可与 TTS 同跑）
+  - 本地 `rapidocr` 提文字（免费）→ 没字才调千问描述情绪（≈0.003 元/张）
+  - 描述质量明显优于本地 Qwen3-VL-8B：`AI圈内调侃竞争与内卷` / `俏皮调侃，用于自嘲或反讽早起`
+  - 不再需要停 TTS 腾显存
+
+### Docs
+
+- `QUESTION.md` Q24 补充**三家模型对比 + 位置偏差实验**：证明 VLM 认中文网络 IP 不可靠
+  （同一模型同一张图，答案跟着选项位置变），不是模型大小的问题
+- 补充这个账号可用的视觉模型清单与价格（`qwen3-vl-plus` 可用；`qwen-vl-plus/max` 已下线；`qwen-vl-max-latest` 403）
+
+### Notes
+
+- 表情库 386 张现已全部有语义标签（hash 标签 0 张）
+- 结论：**标签写情绪、不写角色名**；角色名放独立 `character` 字段，不参与检索
+
 ## [0.24.5] - 2026-11-07
 
 ### Added
