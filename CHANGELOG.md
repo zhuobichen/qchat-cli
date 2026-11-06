@@ -2,6 +2,22 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.18.0] - 2026-11-06
+
+### Added
+
+- **回复闸门接入 group-bot**：@ 消息在生成回复前先过 `gateReply`（Jev 判 reply/wait/skip）；低置信或异常自动回落规则（@ 必回），不会因为模型抽风漏回
+- `qce gate <文本> --trigger mention|private|ambient`：单独试闸门决策（真机验证：@ → reply 0.80；路人闲聊 0.56/0.30 → 回落 skip）
+- `src/core/reply-gate.ts`：请求体/解析/回落（15 单测）
+
+### Fixed
+
+- **watcher 把历史消息当新消息投递**：停止一段时间后水位停摆，重启会把几天前消息逐条推来。新增 `maxAgeHours`（默认 6h）——超龄消息只推进水位、不投递；水位改为按"看到过的最新时间"推进，避免陈旧消息每轮重扫
+
+### Notes
+
+- 云端已停用：`cloud-qq.service` 停止+禁用，服务端 NapCat 容器已停；zhaowen 号只在本地在线（同一账号单端在线是硬约束）
+
 ## [0.17.0] - 2026-11-06
 
 ### Added

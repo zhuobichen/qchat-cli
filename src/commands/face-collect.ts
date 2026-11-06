@@ -5,8 +5,11 @@ import { join } from 'node:path';
 import { authManager } from '../core/auth.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import {
-  saveCandidate, renderCandidates, applyCandidates, type CollectCandidate,
+  saveCandidate, renderCandidates, applyCandidates, looksLikeEmoji, type CollectCandidate,
 } from '../core/face-collect.js';
+import {
+  pickUnlabeled, describeImage, readEmojiBytes, loadManifestFile, saveManifest,
+} from '../core/emoji-label.js';
 
 const LIBRARY_DIR = 'private/emoji-library';
 const CANDIDATE_DIR = 'private/emoji-candidates';
@@ -70,6 +73,11 @@ export function faceCommandExtended(program: Command): void {
             const local = typeof info?.file === 'string' && existsSync(info.file) ? info.file : '';
             if (!local) continue;
             const buf = readFileSync(local);
+            const verdict = looksLikeEmoji(buf);
+            if (!verdict.ok) {
+              if (options.dry || process.env.QCE_VERBOSE) console.log(chalk.dim(`  跳过 ${ref.slice(-16)}：${verdict.reason}`));
+              continue;
+            }
             if (options.dry) {
               const { candidate } = saveCandidate(buf, ref, CANDIDATE_DIR, new Set([...known]));
               candidates.push(candidate);
@@ -108,6 +116,84 @@ export function faceCommandExtended(program: Command): void {
         console.log(chalk.green(`已并入表情库：+${added}，现有 ${total} 个`));
       } else if (candidates.length > 0) {
         console.log(chalk.dim(`确认无误后执行：qce face collect ${groupId} --apply`));
+      }
+    });
+
+  target
+    .command('label [hash] [label]')
+    .description('表情打标：不带参数=列出待标项；给 hash 与 label=直接写入；--vision=调视觉模型')
+    .option('-n, --limit <n>', 'vision 模式本次最多标几个', '10')
+    .option('--vision', '调视觉模型自动打标（需要 QCE_VISION_KEY）')
+    .option('--dry', '只打印将要标什么，不写回')
+    .action(async (hashArg, labelArg, options) => {
+      const manifestPath = join(LIBRARY_DIR, 'manifest.json');
+      const manifest = loadManifestFile(manifestPath);
+
+      // 手动写入模式：qce face label <hash> <label>
+      if (hashArg && labelArg) {
+        const hit = manifest.emojis.find((e) => e.hash === hashArg || e.hash.startsWith(hashArg));
+        if (!hit) {
+          console.log(chalk.red(`没找到 hash 为 ${hashArg} 的表情`));
+          return;
+        }
+        hit.label = String(labelArg).slice(0, 30);
+        saveManifest(manifestPath, manifest);
+        console.log(chalk.green(`${hit.hash.slice(0, 8)} → ${hit.label}`));
+        return;
+      }
+
+      // 列表模式：给人和 agent 看图片路径
+      if (!options.vision) {
+        const pending = pickUnlabeled(manifest, 999);
+        if (pending.length === 0) {
+          console.log(chalk.green('没有待分类的表情'));
+          return;
+        }
+        console.log(chalk.cyan(`待标 ${pending.length} 个（看图后执行：qce face label <hash> <标签>）`));
+        for (const r of pending) {
+          console.log(`${r.hash.slice(0, 10)}  ${join(LIBRARY_DIR, r.file)}`);
+        }
+        return;
+      }
+
+      const pending = pickUnlabeled(manifest, Number(options.limit) || 10);
+      if (pending.length === 0) {
+        console.log(chalk.green('没有待分类的表情'));
+        return;
+      }
+
+      const apiKey = process.env.QCE_VISION_KEY || '';
+      if (!apiKey) {
+        console.log(chalk.red('需要 QCE_VISION_KEY（302.AI 或其他 OpenAI 兼容视觉模型的 key）'));
+        console.log(chalk.dim('用法: QCE_VISION_KEY=sk-... qce face label'));
+        return;
+      }
+
+      let labeled = 0;
+      for (const record of pending) {
+        const bytes = readEmojiBytes(LIBRARY_DIR, record);
+        if (!bytes) {
+          console.log(chalk.yellow(`${record.hash.slice(0, 8)}: 文件缺失，跳过`));
+          continue;
+        }
+        const label = await describeImage(bytes, {
+          apiKey,
+          ...(process.env.QCE_VISION_MODEL ? { model: process.env.QCE_VISION_MODEL } : {}),
+        });
+        if (!label) {
+          console.log(chalk.yellow(`${record.hash.slice(0, 8)}: 描述失败，跳过`));
+          continue;
+        }
+        console.log(`${record.hash.slice(0, 8)} → ${label}`);
+        if (!options.dry) {
+          record.label = label;
+          labeled += 1;
+        }
+      }
+
+      if (!options.dry && labeled > 0) {
+        saveManifest(manifestPath, manifest);
+        console.log(chalk.green(`已标注 ${labeled} 个`));
       }
     });
 }

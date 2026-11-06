@@ -1,0 +1,15 @@
+{
+  "http": "https://43.133.171.234:8443/onebot",
+  "ws": "wss://43.133.171.234:8443/onebot/",
+  "token": "75277e324f924d73255a5d0b77543e035af0e509bc7d7559",
+  "dshEndpoint": "http://127.0.0.1:3080/dsh-agent-supervisor/command",
+  "dshKey": "",
+  "sessionId": "session-54488d96-d0ba-4c47-9a23-1e424b9fde4a",
+  "groups": [],
+  "contextMessages": 8,
+  "mentionOnly": true,
+  "autoAcceptFriends": [
+    1473517806
+  ],
+  "autoAcceptAllFriends": false
+}

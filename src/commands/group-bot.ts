@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { authManager } from '../core/auth.js';
 import { generateGroupReply, getMentionedText, loadGroupBotModelConfig, summarizeGroupMemory, type GroupBotModelConfig } from '../core/group-agent.js';
+import { gateReply } from '../core/reply-gate.js';
 import { safetyManager } from '../core/safety.js';
 import { MessageSegment, OneBotEvent } from '../core/onebot-client.js';
 import { GroupContextStore } from '../core/group-context.js';
@@ -159,6 +160,7 @@ export function groupBotCommand(program: Command): void {
         }
         console.log(chalk.cyan(`[群 ${groupId}] 收到 @ 消息，长度 ${input.length}`));
         if (!options.autoReply || !modelConfig) return;
+
         if (!input.trim()) {
           awaitingFollowUp.set(event.user_id, Date.now() + FOLLOW_UP_WINDOW_MS);
           console.log(chalk.dim('等待该成员在 30 秒内补充下一条消息。'));
@@ -168,6 +170,13 @@ export function groupBotCommand(program: Command): void {
 
         replyQueue = replyQueue.then(async () => {
           try {
+          // 回复闸门：@ 也过一遍 Jev；低置信或异常时回落规则（@ 必回）
+          const gate = await gateReply({ trigger: 'mention', recent: [input] });
+          if (gate.decision !== 'reply') {
+            console.log(chalk.dim(`[群 ${groupId}] 闸门不接：${gate.decision}（${gate.source} ${gate.confidence.toFixed(2)}）${gate.reason ?? ''}`));
+            return;
+          }
+          if (gate.source === 'jev') console.log(chalk.dim(`[群 ${groupId}] 闸门通过（jev ${gate.confidence.toFixed(2)}）`));
           toolRunner.beginTurn();
           const isCurrentInfoRequest = shouldPrefetchPublicSearch(input);
           const context = contextStore.buildAgentInput(groupId, modelConfig.historyMessages, modelConfig.maxInputChars);
