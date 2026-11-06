@@ -57,6 +57,7 @@ function loadConfig() {
     dshKey: raw.dshKey ?? process.env.DSH_SUPERVISOR_KEY ?? '',
     sessionId: raw.sessionId,
     intervalSec: Math.max(raw.intervalSec ?? 30, 10),
+    maxAgeHours: Math.max(raw.maxAgeHours ?? 6, 1),
     digestMin: Math.max(raw.digestMin ?? 10, 1),
     groups: Array.isArray(raw.groups) ? raw.groups.map(Number) : [],
     includePrivate: raw.includePrivate !== false,
@@ -174,7 +175,16 @@ async function collectOnce(selfUin) {
       continue;
     }
 
-    for (const m of msgs) {
+    // 陈旧消息：watcher 停过一段时间后，水位之前的历史不该被当成"刚发生"
+    // cutoff 必须在取历史之后、循环之前算好——内层要用它过滤
+    const cutoff = Math.floor(Date.now() / 1000) - cfg.maxAgeHours * 3600;
+    const newestTime = msgs.length ? msgs[msgs.length - 1].time : 0;
+    const freshMsgs = msgs.filter((m) => m.time > cutoff);
+    if (freshMsgs.length !== msgs.length) {
+      log(`${key}: 跳过 ${msgs.length - freshMsgs.length} 条陈旧消息（>${cfg.maxAgeHours}h）`);
+    }
+
+    for (const m of freshMsgs) {
       if (m.time <= lastSeen) continue;
       const id = String(m.message_id ?? `${m.time}:${m.message_seq}`);
       if (state.seen[id]) continue;
@@ -185,7 +195,7 @@ async function collectOnce(selfUin) {
         at: new Date().toISOString(),
         kind: isGroup ? 'group' : 'private',
         peer,
-        peerName: isGroup ? `${c.peerName ?? peer}(${peer})` : `${c.peerName ?? peer}(${peer})`,
+        peerName: `${c.peerName ?? peer}(${peer})`,
         time: m.time,
         senderId: m.sender?.user_id,
         sender: m.sender?.card || m.sender?.nickname || String(m.sender?.user_id),
@@ -201,16 +211,8 @@ async function collectOnce(selfUin) {
       if (fresh.length >= cfg.maxPerPoll) break;
     }
 
-    // 陈旧消息：watcher 停过一段时间后，水位之前的历史不该被当成"刚发生"
-    const newestTime = msgs.length ? msgs[msgs.length - 1].time : 0;
-    const cutoff = Math.floor(Date.now() / 1000) - cfg.maxAgeHours * 3600;
-    const fresh = msgs.filter((m) => m.time > cutoff);
-    if (fresh.length !== msgs.length) log(`${key}: 跳过 ${msgs.length - fresh.length} 条陈旧消息（>${cfg.maxAgeHours}h）`);
-    msgs = fresh;
-
     // 水位始终按"看到过的最新时间"推进，否则陈旧消息每轮都会被重新扫一遍
     if (newestTime) state.lastTime[key] = Math.max(lastSeen, newestTime);
-    if (fresh.length >= cfg.maxPerPoll) break;
   }
 
   return fresh;

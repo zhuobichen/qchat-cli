@@ -4,6 +4,7 @@ import { authManager } from '../core/auth.js';
 import { generateGroupReply, getMentionedText, loadGroupBotModelConfig, summarizeGroupMemory, type GroupBotModelConfig } from '../core/group-agent.js';
 import { gateReply } from '../core/reply-gate.js';
 import { loadGroupPersona, buildPersonaBlock } from '../core/persona.js';
+import { buildProfileBlock } from '../core/profile-store.js';
 import { safetyManager } from '../core/safety.js';
 import { MessageSegment, OneBotEvent } from '../core/onebot-client.js';
 import { GroupContextStore } from '../core/group-context.js';
@@ -184,6 +185,7 @@ export function groupBotCommand(program: Command): void {
           const skillContext = loadRelevantSkills(modelConfig.skillDirectory, input);
           const personaText = loadGroupPersona(groupId);
           const personaBlock = personaText ? buildPersonaBlock(personaText) : '';
+          const profileBlock = buildProfileBlock(groupId);
           const currentImage = contextStore.findImage(groupId, event.message_id, 1);
           const imageStartedAt = Date.now();
           const imageDescription = currentImage
@@ -200,9 +202,10 @@ export function groupBotCommand(program: Command): void {
           let reply: string;
           try {
             console.log(chalk.dim(`AI 请求：上下文 ${context.length} 字，记忆 ${memory.summary.length} 字，检索 ${liveSearchResult.length} 字，图片 ${imageDescription.length} 字，工具 ${TEXT_AGENT_TOOLS.length} 个，思考模式 ${modelConfig.enableThinking ? '开' : '关'}`));
+            const personaAndProfile = [personaBlock, profileBlock].filter(Boolean).join('\n\n');
             reply = await generateGroupReply(
               context, memory.summary, modelConfig, TEXT_AGENT_TOOLS,
-              (name, args) => toolRunner.run(name, args), liveSearchResult, imageDescription, skillContext, isCurrentInfoRequest, personaBlock,
+              (name, args) => toolRunner.run(name, args), liveSearchResult, imageDescription, skillContext, isCurrentInfoRequest, personaAndProfile,
             );
           } catch (error) {
             if (!(error instanceof Error) || !/abort|timeout/i.test(error.message)) throw error;

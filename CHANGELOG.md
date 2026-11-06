@@ -2,6 +2,29 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.21.0] - 2026-11-06
+
+### Added
+
+- **群成员画像**（`src/core/member-profile.ts` + `qce profile`）
+  - 从历史聊天统计：发言量、活跃时段、高频词、口头禅、常互动的人——**可解释的统计，不是模型猜的**
+  - 实测群 913807639：4625 条消息 / 22 人；冷峰沉睡 1276 条、糯米天师 1013 条
+  - `qce profile <群号> --save --memory`：存 `private/profiles/` 并写进长期记忆（权重 0.85，衰减慢）
+  - 画像块注入 group-bot 上下文（与群人格一起），并明确「可信但不要在回复里念出来」
+- **本地克隆音色跑通**（GPT-SoVITS v2）
+  - `qce tts --provider local` 实测：合成 → AMR → QQ 语音条送达
+  - 环境：torch 2.11.0+cu128（RTX 5060 / sm_120）+ ffmpeg shared DLL + torchcodec + opencc
+
+### Fixed
+
+- **watcher TDZ 崩溃**：陈旧消息过滤里 `fresh` 在声明前被使用（`Cannot access 'fresh' before initialization`），导致每轮轮询失败。改为先算 `cutoff` 再过滤
+- 删除 `member-profile.ts` 里没用到的死函数 `partnerCounts`（类型错误的来源）
+
+### Notes
+
+- pip 批量装依赖会卡在依赖求解（实测 21 分钟零进展）；**逐个包装** 26 个包 3 分钟完成
+- `torchvision` 会把 torch 升级成 CPU 版，必须 `--index-url .../cu128` 强制重装
+
 ## [0.20.0] - 2026-11-06
 
 ### Added
