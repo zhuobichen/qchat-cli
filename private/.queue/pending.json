@@ -569,5 +569,152 @@
     "status": "pending",
     "createdAt": 1793980293509,
     "attempts": 0
+  },
+  {
+    "id": "mw55xsy7-k0y8v",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793980950,
+      "context": [
+        {
+          "time": 1793980128,
+          "sender": "Todd",
+          "text": "你好"
+        },
+        {
+          "time": 1793980263,
+          "sender": "朝闻",
+          "text": "你好啊。刚才那句没回不是我装死——Jev 拿 0.48 把握（阈值 0.55），因为前面两句骂人的话把气氛带偏了，它以为「你好」是来挑衅的。这种判断还是我自己看更准：你就是在打招呼。"
+        },
+        {
+          "time": 1793980274,
+          "sender": "Todd",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980282,
+          "sender": "Todd",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980408,
+          "sender": "朝闻",
+          "text": "吃瓜是吧，行，那我继续表演。不过说真的——俩内置表情我这边只能看到「呵呵」和「吃瓜」这俩标签，像素是拿不到的，QQ 客户端自己渲染的。"
+        },
+        {
+          "time": 1793980494,
+          "sender": "朝闻",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "没@你；要不要接话由你判断"
+    },
+    "status": "pending",
+    "createdAt": 1793980950991,
+    "attempts": 0
+  },
+  {
+    "id": "mw55ymjn-k3by2",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793980988,
+      "context": [
+        {
+          "time": 1793980282,
+          "sender": "Todd",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980408,
+          "sender": "朝闻",
+          "text": "吃瓜是吧，行，那我继续表演。不过说真的——俩内置表情我这边只能看到「呵呵」和「吃瓜」这俩标签，像素是拿不到的，QQ 客户端自己渲染的。"
+        },
+        {
+          "time": 1793980494,
+          "sender": "朝闻",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980950,
+          "sender": "Todd",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980973,
+          "sender": "朝闻",
+          "text": "哭这么大声，雪都让你震急停了。戏留着晚上群里实战再演，现在先存档一下。"
+        },
+        {
+          "time": 1793980973,
+          "sender": "朝闻",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "没@你；要不要接话由你判断"
+    },
+    "status": "pending",
+    "createdAt": 1793980989347,
+    "attempts": 0
+  },
+  {
+    "id": "mw55yq50-i38t4",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "我红温了",
+      "mentioned": false,
+      "time": 1793980993,
+      "context": [
+        {
+          "time": 1793980408,
+          "sender": "朝闻",
+          "text": "吃瓜是吧，行，那我继续表演。不过说真的——俩内置表情我这边只能看到「呵呵」和「吃瓜」这俩标签，像素是拿不到的，QQ 客户端自己渲染的。"
+        },
+        {
+          "time": 1793980494,
+          "sender": "朝闻",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980950,
+          "sender": "Todd",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980973,
+          "sender": "朝闻",
+          "text": "哭这么大声，雪都让你震急停了。戏留着晚上群里实战再演，现在先存档一下。"
+        },
+        {
+          "time": 1793980973,
+          "sender": "朝闻",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793980988,
+          "sender": "Todd",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "没@你；要不要接话由你判断"
+    },
+    "status": "pending",
+    "createdAt": 1793980994004,
+    "attempts": 0
   }
 ]

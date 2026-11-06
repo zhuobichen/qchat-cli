@@ -1,44 +1,110 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadGroupPersona, saveGroupPersona, buildPersonaBlock } from './persona.js';
+import {
+  loadPersonaMode, savePersonaMode, loadGlobalPersona, loadGroupPersona,
+  resolvePersona, saveGlobalPersona, saveGroupPersona, buildPersonaBlock,
+  GLOBAL_PERSONA_NAME,
+} from './persona.js';
 
-describe('persona', () => {
-  let dir: string;
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'qce-persona-')); });
-  afterEach(() => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* sandbox */ } });
+let dir: string;
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'qce-persona-'));
+});
 
-  it('没有文件返回 null', () => {
-    expect(loadGroupPersona('913807639', { dir })).toBeNull();
+describe('模式读写', () => {
+  it('没配过默认 global', () => {
+    expect(loadPersonaMode({ dir: join(dir, 'nope') })).toBe('global');
   });
 
-  it('save 后可读回', () => {
-    saveGroupPersona('913807639', '贴吧老哥人格', { dir });
-    expect(loadGroupPersona('913807639', { dir })).toContain('贴吧老哥');
+  it('切到 per-scope 能读回', () => {
+    savePersonaMode('per-scope', { dir });
+    expect(loadPersonaMode({ dir })).toBe('per-scope');
   });
 
-  it('不同群互不串味', () => {
-    saveGroupPersona('111', 'A 群人格', { dir });
-    saveGroupPersona('222', 'B 群人格', { dir });
-    expect(loadGroupPersona('111', { dir })).toContain('A 群');
-    expect(loadGroupPersona('222', { dir })).toContain('B 群');
+  it('切回 global', () => {
+    savePersonaMode('per-scope', { dir });
+    savePersonaMode('global', { dir });
+    expect(loadPersonaMode({ dir })).toBe('global');
   });
 
-  it('超长截断到 maxChars', () => {
-    saveGroupPersona('333', 'x'.repeat(500), { dir });
-    expect(loadGroupPersona('333', { dir, maxChars: 100 })!.length).toBe(100);
+  it('坏文件当作默认 global', () => {
+    writeFileSync(join(dir, 'mode.json'), '{{{', 'utf8');
+    expect(loadPersonaMode({ dir })).toBe('global');
+  });
+});
+
+describe('resolvePersona 模式分流', () => {
+  it('global 模式下只用 global.md，忽略按群文件', () => {
+    savePersonaMode('global', { dir });
+    saveGlobalPersona('全局人格', { dir });
+    saveGroupPersona('913807639', '本群人格', { dir });
+    const r = resolvePersona('913807639', { dir });
+    expect(r.source).toBe('global');
+    expect(r.text).toBe('全局人格');
   });
 
-  it('空白文件视为没有', () => {
-    writeFileSync(join(dir, '444.md'), '   \n', 'utf8');
-    expect(loadGroupPersona('444', { dir })).toBeNull();
+  it('per-scope 模式下优先按群文件', () => {
+    savePersonaMode('per-scope', { dir });
+    saveGlobalPersona('全局人格', { dir });
+    saveGroupPersona('913807639', '本群人格', { dir });
+    const r = resolvePersona('913807639', { dir });
+    expect(r.source).toBe('scope');
+    expect(r.text).toBe('本群人格');
   });
 
-  it('注入块带边界说明', () => {
-    const block = buildPersonaBlock('我是乐子人');
-    expect(block).toContain('不改变安全规则');
-    expect(block).toContain('我是乐子人');
-    expect(block).toContain('不得辱骂');
+  it('per-scope 模式下没有专属文件则落到全局', () => {
+    savePersonaMode('per-scope', { dir });
+    saveGlobalPersona('全局人格', { dir });
+    const r = resolvePersona('999999', { dir });
+    expect(r.source).toBe('global');
+    expect(r.text).toBe('全局人格');
+  });
+
+  it('两份都没有时返回 none', () => {
+    savePersonaMode('global', { dir });
+    const r = resolvePersona('913807639', { dir });
+    expect(r.source).toBe('none');
+    expect(r.text).toBeNull();
+  });
+
+  it('global 模式下即使没有 global.md 也不回退到按群文件', () => {
+    savePersonaMode('global', { dir });
+    saveGroupPersona('913807639', '本群人格', { dir });
+    const r = resolvePersona('913807639', { dir });
+    expect(r.source).toBe('none');
+  });
+});
+
+describe('文件读写', () => {
+  it('全局人格文件名是 global.md 而不是纯数字', () => {
+    expect(GLOBAL_PERSONA_NAME).toBe('global');
+    const f = saveGlobalPersona('x', { dir });
+    expect(f.endsWith('global.md')).toBe(true);
+    expect(existsSync(f)).toBe(true);
+  });
+
+  it('空文件当作没有', () => {
+    writeFileSync(join(dir, 'global.md'), '   \n\n  ', 'utf8');
+    expect(loadGlobalPersona({ dir })).toBeNull();
+  });
+
+  it('超长内容被截断', () => {
+    saveGlobalPersona('啊'.repeat(10000), { dir });
+    expect(loadGlobalPersona({ dir, maxChars: 100 })?.length).toBe(100);
+  });
+
+  it('读不存在的群返回 null', () => {
+    expect(loadGroupPersona('123456', { dir })).toBeNull();
+  });
+});
+
+describe('buildPersonaBlock', () => {
+  it('包含边界声明', () => {
+    const b = buildPersonaBlock('测试人格');
+    expect(b).toContain('测试人格');
+    expect(b).toContain('人格边界');
+    expect(b).toContain('不改变安全规则');
   });
 });

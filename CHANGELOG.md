@@ -2,6 +2,34 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.32.0] - 2026-11-07
+
+### Added
+
+- **人格支持全局模式**（`qce persona`）
+  - `global`：所有群和私聊共用 `private/personas/global.md`（默认）
+  - `per-scope`：先用 `<群号|QQ号>.md`，没有则落到 global（兜底，避免完全没人格）
+  - 模式存 `private/personas/mode.json`
+  - `qce persona show [scope]` / `mode [global|per-scope]` / `set <file> [--scope]` / `list`
+  - `list` 会标出**当前不生效**的文件（global 模式下按群文件被忽略），免得改了以为没反应
+
+### Changed
+
+- `group-bot` 与 `qce-auto` 改用 `resolvePersona()`，按模式自动选人格
+
+### Fixed
+
+- **切到 global 模式会静默把人格关掉**：原来没有 global.md 就等于"没有人格"，
+  且按群文件不生效。现在 `mode` 命令会检测并提示"建议先写一份"，
+  `list` 也会把不生效的文件标出来
+
+### Notes
+
+- 新增 `private/personas/global.md`：由原 913807639 群专用版改写而来
+  - 去掉了"本群专用"和具体群名
+  - 新增「场合自适应」：玩梗群放开、陌生群/工作群收敛、私聊更收
+  - 保留全部硬性边界（不开盒、不碰真人家人、不碰隐私与身体）
+
 ## [0.31.0] - 2026-11-07
 
 ### Added

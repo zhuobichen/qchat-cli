@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { authManager } from '../core/auth.js';
 import { generateGroupReply, getMentionedText, loadGroupBotModelConfig, summarizeGroupMemory, type GroupBotModelConfig } from '../core/group-agent.js';
 import { gateReply } from '../core/reply-gate.js';
-import { loadGroupPersona, buildPersonaBlock } from '../core/persona.js';
+import { resolvePersona, buildPersonaBlock } from '../core/persona.js';
 import { buildProfileBlock } from '../core/profile-store.js';
 import { safetyManager } from '../core/safety.js';
 import { MessageSegment, OneBotEvent } from '../core/onebot-client.js';
@@ -183,7 +183,9 @@ export function groupBotCommand(program: Command): void {
           const isCurrentInfoRequest = shouldPrefetchPublicSearch(input);
           const context = contextStore.buildAgentInput(groupId, modelConfig.historyMessages, modelConfig.maxInputChars);
           const skillContext = loadRelevantSkills(modelConfig.skillDirectory, input);
-          const personaText = loadGroupPersona(groupId);
+          // 按当前模式取人格（global 用全局，per-scope 先找本群再落到全局）
+          const personaResolved = resolvePersona(groupId);
+          const personaText = personaResolved.text;
           const personaBlock = personaText ? buildPersonaBlock(personaText) : '';
           const profileBlock = buildProfileBlock(groupId);
           const currentImage = contextStore.findImage(groupId, event.message_id, 1);

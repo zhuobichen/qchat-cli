@@ -27,6 +27,7 @@ import { gateCommand } from './commands/gate.js';
 import { memeCommand } from './commands/meme.js';
 import { historyCommand } from './commands/history.js';
 import { faceCommandExtended } from './commands/face-collect.js';
+import { personaCommand } from './commands/persona.js';
 import { backupCommand } from './commands/backup.js';
 import { sendCommand } from './commands/send.js';
 import { monitorCommand } from './commands/monitor.js';
@@ -49,7 +50,7 @@ const program = new Command();
 program
   .name('qce')
   .description('QQ Chat Exporter CLI - 导出 QQ 聊天记录')
-  .version('0.31.0')
+  .version('0.32.0')
   .option('--account <name>', '本次命令连接的账号（见 qce account list）');
 
 // 所有子命令执行前解析 --account，让 authManager 面向对应实例
@@ -90,6 +91,7 @@ groupBotCommand(program);
 privateBotCommand(program);
 faceCommand(program);
 faceCommandExtended(program);
+personaCommand(program);
 accountCommand(program);
 
 program.parse();
