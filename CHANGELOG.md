@@ -2,6 +2,30 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.25.0] - 2026-11-07
+
+### Added
+
+- **统一识图模块 `src/core/vision.ts`**：**千问优先 → 本地兜底**（19 单测）
+  - `understandImage()` 三级降级：`qwen3-vl-plus` → 本地 rapidocr → 本地 llama.cpp VLM
+  - 一次调用同时拿到「图里文字 / 情绪 / 角色」三个字段
+  - 千问额度耗尽或 401/403/429 自动降级，不会卡住流程
+  - `--local-only` / `--qwen-only` 可强制某条路
+
+### Fixed
+
+- **千问提文字被截断**：原解析按「行」取 `文字：` 后面第一行，
+  多行台词只留第一行（`人物介绍 GPT 拥有高中低档模型…` 被截成 `人物介绍`）。
+  改为按「段落」取——从 key 到下一个 key 之间全部保留
+- **UI 噪音漏清**：千问会照抄 `已思考（用时 3 秒）＞` 这类思考框前缀；
+  抽出 `cleanVisualText()` 给千问和本地 OCR 共用
+- `max_tokens` 120 → 400（长文字图需要）
+
+### Notes
+
+- 打标脚本 `scripts/label-emojis.mjs` 改为调用统一模块，日志标明每张走的是「千问/本地OCR/本地VLM」
+- 成本：千问约 0.003 元/张；本地两条 0 成本
+
 ## [0.24.7] - 2026-11-07
 
 ### Added
