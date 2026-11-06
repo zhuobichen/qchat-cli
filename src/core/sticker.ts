@@ -8,6 +8,8 @@
  *
  * 纯逻辑（候选构造、请求体、结果解析）与网络分开，便于单测。
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { searchEmojiLibrary, emojiPath } from './emoji-library.js';
 import { searchMemes } from './memesource.js';
 
@@ -264,13 +266,85 @@ export async function pickStickerMerged(
     }));
   }
 
-  const all = [...locals, ...remotes];
+  let all = [...locals, ...remotes];
   if (all.length === 0) return null;
+
+  // 避开最近用过的，免得同一个词连着发同一张图
+  const usage = loadStickerUsage();
+  all = avoidRecentlyUsed(all, usage);
 
   const jev = await chooseWithJev(intent, all, options);
   if (jev) {
     const hit = all.find((c) => c.id === jev.id)!;
+    markStickerUsed(hit.id);
     return { ...hit, source: 'jev', confidence: jev.confidence };
   }
+  markStickerUsed(all[0].id);
   return { ...all[0], source: 'keyword' };
+}
+
+// ══════════════════════════════════════════════════════════════
+// 使用记录：避免总是挑到同一张
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * 表情使用记录（id → 最近一次使用的时间戳）。
+ *
+ * 为什么需要：`pickStickerMerged('无语')` 每次都会返回同一张——
+ * 候选是固定的、Jev 的判断也稳定，于是同一个词连着用就会一直发同一张图。
+ * 别人视角里这就是"这 bot 只会那几张"。
+ */
+export type StickerUsage = Record<string, number>;
+
+export const DEFAULT_USAGE_PATH = 'private/.sticker-usage.json';
+/** 默认冷却：同一张图 6 小时内不再重复用 */
+export const DEFAULT_STICKER_COOLDOWN_MS = 6 * 3600_000;
+
+export function loadStickerUsage(path: string = DEFAULT_USAGE_PATH): StickerUsage {
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    return raw && typeof raw === 'object' ? (raw as StickerUsage) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveStickerUsage(usage: StickerUsage, path: string = DEFAULT_USAGE_PATH): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(usage, null, 2), 'utf8');
+  } catch {
+    /* 记不下来就算了，不影响发图 */
+  }
+}
+
+/** 标记某张用过（调用方在选择成功后调） */
+export function markStickerUsed(id: string, path: string = DEFAULT_USAGE_PATH): void {
+  const usage = loadStickerUsage(path);
+  usage[id] = Date.now();
+  // 顺手清理 30 天前的记录，避免文件无限增长
+  const cutoff = Date.now() - 30 * 24 * 3600_000;
+  for (const k of Object.keys(usage)) {
+    if (usage[k] < cutoff) delete usage[k];
+  }
+  saveStickerUsage(usage, path);
+}
+
+/**
+ * 过滤掉冷却期内的候选。
+ *
+ * 注意：如果全都用过（小库常见），不要返回空——退回完整列表，
+ * 否则会出现"有表情却发不出去"。宁可重复，也不能不发。
+ */
+export function avoidRecentlyUsed(
+  candidates: MergedCandidate[],
+  usage: StickerUsage,
+  cooldownMs: number = DEFAULT_STICKER_COOLDOWN_MS,
+): MergedCandidate[] {
+  const now = Date.now();
+  const fresh = candidates.filter((c) => {
+    const t = usage[c.id];
+    return !t || now - t > cooldownMs;
+  });
+  return fresh.length > 0 ? fresh : candidates;
 }

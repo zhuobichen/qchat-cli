@@ -367,7 +367,8 @@ async function generateReply(kind, peer, text, history, abuse = false) {
     ].join(NL);
   }
   if (isGroup) {
-    const persona = c.persona.loadGroupPersona(peer);
+    const personaResolved = c.persona.resolvePersona(peer);
+    const persona = personaResolved.text;
     const profile = c.profile.buildProfileBlock(peer);
     if (persona) extra += c.persona.buildPersonaBlock(persona) + '\n\n';
     if (profile) extra += profile + '\n\n';
