@@ -2,6 +2,20 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.20.0] - 2026-11-06
+
+### Added
+
+- **`qce history <群号>`：读完整历史（不依赖账号在线）**
+  - 解析 `output/group-<群号>-full.txt` 导出文件，支持 `--search` / `--from` / `--since` / `--until` / `--last` / `--limit` / `--json`
+  - 实测：群 913807639 的 **4625 条**（2025-09-03 → 2026-10-21）可检索
+  - `src/core/historyfile.ts`（11 单测：解析多行正文、过滤、截断、渲染）
+
+### Why
+
+- NapCat 本地只缓存最近几十条；本地 QQ 库是今天新装的（`nt_msg.db` 仅 497KB）。真正的历史在导出文件与服务器那份 QQ 库里
+- 因此「读历史」走文件，「收实时」走 watcher，「发回复」走 `qce send`——**不需要常驻 group-bot**
+
 ## [0.19.0] - 2026-11-06
 
 ### Added
