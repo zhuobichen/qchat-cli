@@ -98,3 +98,27 @@ describe('GATE_CRITERIA', () => {
     }
   });
 });
+
+describe('GATE_CRITERIA 覆盖情绪共鸣', () => {
+  it('reply 判据里明确包含吐槽/糗事/共鸣', () => {
+    expect(GATE_CRITERIA.reply).toContain('吐槽');
+    expect(GATE_CRITERIA.reply).toContain('共鸣');
+  });
+
+  it('skip 判据里包含事务通知与刷屏', () => {
+    expect(GATE_CRITERIA.skip).toContain('事务');
+    expect(GATE_CRITERIA.skip).toContain('刷屏');
+  });
+});
+
+describe('阈值默认值', () => {
+  it('未设环境变量时默认 0.55（0.45 会放过 @all 打吗 这类不该接的）', async () => {
+    const saved = process.env.QCE_GATE_MIN_CONFIDENCE;
+    delete process.env.QCE_GATE_MIN_CONFIDENCE;
+    // 0.5 置信度应被拒（低于默认阈值）
+    const fake = (async () => ({ ok: true, json: async () => ({ answers: { m0: { choice: 'reply', confidence: 0.5 } } }) } as any)) as unknown as typeof fetch;
+    const r = await gateReply({ trigger: 'ambient', recent: ['x'] }, { apiKey: 'k', fetchImpl: fake });
+    expect(r.source).toBe('rules');
+    if (saved !== undefined) process.env.QCE_GATE_MIN_CONFIDENCE = saved;
+  });
+});

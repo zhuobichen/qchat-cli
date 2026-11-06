@@ -68,6 +68,9 @@ function loadConfig() {
     maxAgeSec: Math.max(raw.maxAgeSec ?? 600, 30),
     minReplyGapSec: Math.max(raw.minReplyGapSec ?? 20, 0),
     requireMentionInGroup: raw.requireMentionInGroup !== false,
+    freeChat: raw.freeChat === true,
+    freeChatProbability: Math.min(Math.max(raw.freeChatProbability ?? 0.35, 0), 1),
+    maxRepliesPerHour: Math.max(raw.maxRepliesPerHour ?? 8, 1),
     allowVoice: raw.allowVoice !== false,
     ttsEndpoint: raw.ttsEndpoint ?? '',
     ttsRefAudio: raw.ttsRefAudio ?? '',
@@ -81,7 +84,7 @@ const cfg = loadConfig();
 
 // ————— 状态（原子写，断点续传）—————
 function emptyState() {
-  return { version: 1, handled: {}, lastReplyAt: {}, cursors: {}, stats: { polls: 0, replied: 0, skipped: 0, failed: 0 } };
+  return { version: 1, handled: {}, lastReplyAt: {}, replyTimes: {}, cursors: {}, stats: { polls: 0, replied: 0, skipped: 0, failed: 0 } };
 }
 
 function loadState() {
@@ -90,7 +93,7 @@ function loadState() {
     const p = JSON.parse(readFileSync(STATE_PATH, 'utf8'));
     return {
       ...emptyState(), ...p,
-      handled: p.handled ?? {}, lastReplyAt: p.lastReplyAt ?? {},
+      handled: p.handled ?? {}, lastReplyAt: p.lastReplyAt ?? {}, replyTimes: p.replyTimes ?? {},
       cursors: p.cursors ?? {}, stats: p.stats ?? emptyState().stats,
     };
   } catch {
@@ -222,18 +225,63 @@ async function loadCore() {
 // ————— 主循环 —————
 let selfUin = 0;
 
-async function shouldReply(kind, peer, mentioned, time) {
+/**
+ * 该不该回。
+ *
+ * 两层：
+ *   1. 硬规则（确定性，永远先生效）：白名单 / 群列表 / 消息年龄 / 最小间隔 / 每小时上限
+ *   2. 群里没 @ 我时：交给 Jev 判断（reply|wait|skip），置信度不够回落规则（默认不回）
+ *
+ * 为什么要 Jev 而不是"没 @ 就不回"：一句话是否值得接，靠 @ 判断不出来。
+ *   「那个机器人是不是又挂了」没 @ 我在说我；「今天食堂真难吃」跟我无关。
+ *   但也不能全交给概率——所以有置信度门槛 + 概率阻尼 + 每小时上限。
+ */
+async function shouldReply(kind, peer, mentioned, time, recent = []) {
   const key = `${kind === 'group' ? 'g' : 'p'}${peer}`;
   const now = Math.floor(Date.now() / 1000);
 
+  // —— 硬规则：这些不管 Jev 说什么都不回 ——
   if (cfg.allow.length > 0 && !cfg.allow.includes(String(peer))) return { reply: false, reason: '不在白名单' };
   if (kind === 'group' && !cfg.groups.includes(Number(peer))) return { reply: false, reason: '该群不在自动回复列表' };
   if (kind === 'private' && !cfg.includePrivate) return { reply: false, reason: '私聊自动回复已关闭' };
-  if (kind === 'group' && cfg.requireMentionInGroup && !mentioned) return { reply: false, reason: '群里没 @ 我' };
   if (now - time > cfg.maxAgeSec) return { reply: false, reason: `消息太老（${now - time}s）` };
+
   const last = state.lastReplyAt[key] ?? 0;
-  if (last && now - last < cfg.minReplyGapSec) return { reply: false, reason: `距上次回复不足 ${cfg.minReplyGapSec}s` };
-  return { reply: true, reason: '通过' };
+  if (last && now - last < cfg.minReplyGapSec) {
+    return { reply: false, reason: `距上次回复不足 ${cfg.minReplyGapSec}s` };
+  }
+
+  // 每小时上限：自由接话最容易翻车的地方，必须兜住
+  const hourAgo = now - 3600;
+  const recentReplies = (state.replyTimes?.[key] ?? []).filter((t) => t > hourAgo);
+  if (recentReplies.length >= cfg.maxRepliesPerHour) {
+    return { reply: false, reason: `一小时内已回 ${recentReplies.length} 次，到上限` };
+  }
+
+  // —— @ 我 / 私聊：直接通过 ——
+  if (mentioned || kind === 'private') return { reply: true, reason: mentioned ? '@ 到我' : '私聊' };
+
+  // —— 群里没 @：Jev 判断 ——
+  if (cfg.requireMentionInGroup) return { reply: false, reason: '群里没 @ 我（已配置必须 @）' };
+  if (!cfg.freeChat) return { reply: false, reason: '自由接话未开启' };
+
+  try {
+    const c = await loadCore();
+    const gate = await c.gate.gateReply({
+      trigger: 'ambient',
+      recent: recent.slice(-8).map((m) => `${m.sender}: ${m.text}`),
+    });
+    if (gate.decision !== 'reply') {
+      return { reply: false, reason: `Jev 说 ${gate.decision}（${gate.source} ${gate.confidence.toFixed(2)}）` };
+    }
+    // 二次阻尼：Jev 说该回，也不是每次都回——避免"每句都插嘴"
+    if (Math.random() > cfg.freeChatProbability) {
+      return { reply: false, reason: `Jev 说该回，但概率阻尼未命中（${cfg.freeChatProbability}）` };
+    }
+    return { reply: true, reason: `Jev 判断该接（${gate.confidence.toFixed(2)}）` };
+  } catch (e) {
+    return { reply: false, reason: `闸门异常，保守不回：${e.message}` };
+  }
 }
 
 async function generateReply(kind, peer, text, history) {
@@ -288,7 +336,7 @@ async function processMessage(kind, peer, msg, history, self) {
   const mentioned = mentionsSelf(msg, self);
   const voice = hasVoice(msg);
 
-  const decision = await shouldReply(kind, peer, meta.mentioned, meta.time);
+  const decision = await shouldReply(kind, peer, meta.mentioned, meta.time, history);
   if (!decision.reply) {
     state.stats.skipped += 1;
     // 只有"值得注意"的跳过才记日志；太老/间隔不足是常态
@@ -350,6 +398,10 @@ async function processMessage(kind, peer, msg, history, self) {
       breakerRecord(true);
       state.stats.replied += 1;
       state.lastReplyAt[key] = Math.floor(Date.now() / 1000);
+      if (!state.replyTimes) state.replyTimes = {};
+      const rt = (state.replyTimes[key] ?? []).filter((t) => t > Date.now() / 1000 - 7200);
+      rt.push(Math.floor(Date.now() / 1000));
+      state.replyTimes[key] = rt;
       log(`已回复 ${key}（${medium.medium}）`);
     } catch (e) {
       breakerRecord(false);

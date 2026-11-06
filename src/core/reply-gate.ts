@@ -27,10 +27,25 @@ export interface GateResult {
   reason?: string;
 }
 
+/**
+ * 三个选项的判据。
+ *
+ * 写法上刻意把「情绪共鸣」单列——这是之前踩过的坑：
+ * 原判据只写了"直接找我 / 能推进对话"，于是有人甩出糗事求共鸣时，
+ * Jev 只给 0.44 把握，被判成"路人闲聊"。但朋友群里接一句
+ * "哈哈哈哈太惨了"是完全正常的行为，不是打扰。
+ */
 export const GATE_CRITERIA: Record<GateDecision, string> = {
-  reply: '消息在直接找我，或者我接一句能推进对话，值得回',
-  wait: '不是找我，但话题跟我有关或马上会轮到我，再等一两句',
-  skip: '纯路人闲聊、刷屏、广告、我插话只会尴尬',
+  reply:
+    '该我接话：① 有人甩出糗事/吐槽/段子/情绪宣泄，需要有人共鸣一句（"哈哈哈哈太惨了""这也太离谱了"）；' +
+    '② 消息直接找我或问我；' +
+    '③ 我接一句能推进话题、补充信息或活跃气氛',
+  wait:
+    '先别接，再等一两句：话题正在快速轮转、我一插就打断节奏；' +
+    '或者几个人正在争论，我不该选边；或者还没轮到我说',
+  skip:
+    '不该我说话：纯事务通知、复读刷屏、广告、表情包连发；' +
+    '或者别人在约线下活动/私事、在吵架，我插话只会尴尬',
 };
 
 /** 构造 Jev 请求：一个 state（触发原因 + 最近消息），一个 choice 问题 */
@@ -42,7 +57,9 @@ export function buildGateBody(context: GateContext): Record<string, unknown> {
     questions: {
       m0: {
         type: 'choice',
-        instructions: '作为群里的聊天参与者，判断我现在应该回复、再等等，还是跳过。',
+        instructions:
+          '你是一个常驻群里的朋友，不是客服机器人。判断这一条现在该不该接话。' +
+          '注意：有人分享糗事或吐槽时不接反而奇怪；但也不要每句都插嘴。',
         criteria: GATE_CRITERIA,
       },
     },
@@ -79,7 +96,8 @@ export interface GateOptions {
  */
 export async function gateReply(context: GateContext, options: GateOptions = {}): Promise<GateResult> {
   const apiKey = options.apiKey ?? process.env.JEV_API_KEY ?? '';
-  const minConfidence = options.minConfidence ?? 0.6;
+  const minConfidence =
+    options.minConfidence ?? Number(process.env.QCE_GATE_MIN_CONFIDENCE ?? 0.55);
   if (!apiKey) return { ...rulesDecision(context), reason: `${rulesDecision(context).reason}（未配 JEV_API_KEY）` };
 
   const fetchImpl = options.fetchImpl ?? fetch;
