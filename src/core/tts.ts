@@ -134,3 +134,60 @@ export function toVoiceFormat(
 
   return { file: input, format: 'wav' };
 }
+
+
+/**
+ * 本地 TTS provider（GPT-SoVITS / CosyVoice 等本地服务）。
+ *
+ * 约定：服务端实现 GPT-SoVITS 的 api_v2 兼容接口 ——
+ *   POST <endpoint>/tts  { text, text_lang, ref_audio_path, prompt_text, prompt_lang }
+ *   → 返回 wav 原始字节
+ * 这样云（Qwen-TTS）与本地（克隆音色）共用同一条发送链路，只是换 provider。
+ */
+export interface LocalTtsOptions {
+  endpoint: string;
+  refAudio?: string;
+  promptText?: string;
+  textLang?: string;
+  promptLang?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export async function synthesizeLocal(
+  text: string,
+  options: LocalTtsOptions,
+): Promise<Buffer | null> {
+  const trimmed = String(text ?? '').trim();
+  if (trimmed === '') return null;
+  if (!options.endpoint) return null;
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(options.endpoint.replace(/\/$/, '') + '/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: trimmed,
+        text_lang: options.textLang ?? 'zh',
+        ref_audio_path: options.refAudio ?? '',
+        prompt_text: options.promptText ?? '',
+        prompt_lang: options.promptLang ?? 'zh',
+      }),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 120_000),
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length > 0 ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 把本地合成结果落盘 */
+export function saveAudioBuf(buf: Buffer, dir: string, ext = 'wav'): string {
+  mkdirSync(dir, { recursive: true });
+  const file = joinPath(dir, `tts-local-${Date.now()}.${ext}`);
+  writeFileSync(file, buf);
+  return file;
+}

@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { readFileSync } from 'node:fs';
 import { authManager } from '../core/auth.js';
 import { safetyManager } from '../core/safety.js';
-import { synthesize, downloadAudio, toVoiceFormat, findFfmpeg } from '../core/tts.js';
+import { synthesize, downloadAudio, toVoiceFormat, findFfmpeg, synthesizeLocal, saveAudioBuf } from '../core/tts.js';
 import { resolveSession } from '../utils/resolveSession.js';
 
 export function ttsCommand(program: Command): void {
@@ -13,24 +13,48 @@ export function ttsCommand(program: Command): void {
     .option('-o, --output <dir>', '音频保存目录', './output')
     .option('--voice <name>', '音色', 'Cherry')
     .option('--model <name>', '模型', 'qwen3-tts-flash')
+    .option('--provider <p>', 'cloud（默认，Qwen-TTS）或 local（本地克隆音色）', 'cloud')
+    .option('--endpoint <url>', 'local provider 的服务地址，如 http://127.0.0.1:9880')
+    .option('--ref-audio <path>', 'local：参考音频（克隆音色用）')
+    .option('--prompt-text <text>', 'local：参考音频对应的文字')
     .option('--send-to <id>', '合成后直接发到这个 QQ/群号')
     .option('--kind <k>', 'private（默认）或 group', 'private')
     .option('--force', '跳过安全确认')
     .action(async (text, options) => {
       console.log(chalk.dim('合成中...'));
-      const result = await synthesize(String(text), {
-        voice: options.voice,
-        model: options.model,
-      });
-      if (!result) {
-        console.log(chalk.red('合成失败：检查 DASHSCOPE_API_KEY 与模型名（qwen3-tts-flash）'));
-        return;
-      }
+      let file = '';
 
-      const file = await downloadAudio(result.url, options.output);
-      console.log(chalk.green('已合成'));
-      console.log(`  音频: ${file}`);
-      console.log(chalk.dim(`  远端地址 24 小时内有效：${result.url.slice(0, 80)}…`));
+      if (String(options.provider || 'cloud').toLowerCase() === 'local') {
+        if (!options.endpoint) {
+          console.log(chalk.red('local provider 需要 --endpoint，例如 http://127.0.0.1:9880'));
+          return;
+        }
+        const buf = await synthesizeLocal(String(text), {
+          endpoint: String(options.endpoint),
+          ...(options.refAudio ? { refAudio: String(options.refAudio) } : {}),
+          ...(options.promptText ? { promptText: String(options.promptText) } : {}),
+        });
+        if (!buf) {
+          console.log(chalk.red('本地合成失败：检查服务是否在跑（GPT-SoVITS api_v2 的 /tts）'));
+          return;
+        }
+        file = saveAudioBuf(buf, options.output);
+        console.log(chalk.green('已合成（本地音色）'));
+        console.log(`  音频: ${file}`);
+      } else {
+        const result = await synthesize(String(text), {
+          voice: options.voice,
+          model: options.model,
+        });
+        if (!result) {
+          console.log(chalk.red('合成失败：检查 DASHSCOPE_API_KEY 与模型名（qwen3-tts-flash）'));
+          return;
+        }
+        file = await downloadAudio(result.url, options.output);
+        console.log(chalk.green('已合成'));
+        console.log(`  音频: ${file}`);
+        console.log(chalk.dim(`  远端地址 24 小时内有效：${result.url.slice(0, 80)}…`));
+      }
 
       if (!options.sendTo) return;
 

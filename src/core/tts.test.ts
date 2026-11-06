@@ -61,3 +61,40 @@ describe('synthesize', () => {
     expect(await synthesize('你好', { apiKey: 'k', fetchImpl: fake })).toBeNull();
   });
 });
+
+import { synthesizeLocal, saveAudioBuf } from './tts.js';
+
+describe('synthesizeLocal（本地克隆音色）', () => {
+  it('成功时返回音频字节', async () => {
+    const fake = (async () => ({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    } as any)) as unknown as typeof fetch;
+    const buf = await synthesizeLocal('你好', { endpoint: 'http://127.0.0.1:9880', fetchImpl: fake });
+    expect(buf?.length).toBe(3);
+  });
+
+  it('空文本 / 空端点不发请求', async () => {
+    expect(await synthesizeLocal('  ', { endpoint: 'http://x' })).toBeNull();
+    expect(await synthesizeLocal('你好', { endpoint: '' })).toBeNull();
+  });
+
+  it('服务报错返回 null', async () => {
+    const fake = (async () => ({ ok: false, status: 500 } as any)) as unknown as typeof fetch;
+    expect(await synthesizeLocal('你好', { endpoint: 'http://x', fetchImpl: fake })).toBeNull();
+  });
+
+  it('空音频视为失败', async () => {
+    const fake = (async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) } as any)) as unknown as typeof fetch;
+    expect(await synthesizeLocal('你好', { endpoint: 'http://x', fetchImpl: fake })).toBeNull();
+  });
+
+  it('saveAudioBuf 落盘', () => {
+    const { mkdtempSync } = require('node:fs');
+    const { tmpdir } = require('node:os');
+    const { join } = require('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'qce-tts-'));
+    const f = saveAudioBuf(Buffer.from([1, 2]), dir);
+    expect(f.endsWith('.wav')).toBe(true);
+  });
+});

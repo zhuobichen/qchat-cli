@@ -2,6 +2,20 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.17.0] - 2026-11-06
+
+### Added
+
+- **TTS 双 provider**
+  - `cloud`（默认）：阿里云百炼 Qwen-TTS，官方固定音色
+  - `local`：接本地语音克隆服务（GPT-SoVITS `api_v2` 的 `/tts`），用几秒参考音频复刻任意音色
+  - `qce tts <文本> --provider local --endpoint http://127.0.0.1:9880 --ref-audio ./ref.wav --prompt-text "参考音频里的原话"`
+  - 两条路共用同一套「转 AMR → base64 发 record」的发送链路
+
+### Verified
+
+- `vitest run src`：21 文件 / **246 用例**（新增 5 个本地 provider 用例：成功/空文本/空端点/服务报错/空音频/落盘）
+
 ## [0.16.0] - 2026-11-06
 
 ### Added
