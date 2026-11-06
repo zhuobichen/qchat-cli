@@ -1,9 +1,10 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { authManager } from '../core/auth.js';
+import { safetyManager } from '../core/safety.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import {
   saveCandidate, renderCandidates, applyCandidates, looksLikeEmoji, type CollectCandidate,
@@ -12,6 +13,7 @@ import {
   pickUnlabeled, describeImage, readEmojiBytes, loadManifestFile, saveManifest,
 } from '../core/emoji-label.js';
 import { addDirectoryToLibrary, loadLibraryManifest } from '../core/emoji-add.js';
+import { pickStickerMerged, stickerFile } from '../core/sticker.js';
 
 const LIBRARY_DIR = 'private/emoji-library';
 const CANDIDATE_DIR = 'private/emoji-candidates';
@@ -118,6 +120,64 @@ export function faceCommandExtended(program: Command): void {
         console.log(chalk.green(`已并入表情库：+${added}，现有 ${total} 个`));
       } else if (candidates.length > 0) {
         console.log(chalk.dim(`确认无误后执行：qce face collect ${groupId} --apply`));
+      }
+    });
+
+  target
+    .command('send <intent>')
+    .description('挑一张表情发出去（本地库与 memecub 一起挑，斗图用）')
+    .option('-t, --to <id>', 'QQ 号或群号（必填）')
+    .option('-k, --kind <k>', 'private（默认）或 group', 'private')
+    .option('--dry', '只挑不发，看看会选哪张')
+    .action(async (intent, options) => {
+      const to = String(options.to ?? '').trim();
+      if (!to && !options.dry) {
+        console.log(chalk.red('缺少 --to（QQ 号或群号）'));
+        return;
+      }
+
+      const picked = await pickStickerMerged(String(intent));
+      if (!picked) {
+        console.log(chalk.yellow(`没有匹配「${intent}」的表情（宁可不发，也不发不搭的）`));
+        return;
+      }
+
+      const kind = options.kind === 'group' ? 'group' : 'private';
+      console.log(chalk.cyan(`选中「${picked.label}」（${picked.origin}${picked.remoteUrl ? ' 在线' : ' 本地'}）`));
+      if (options.dry) return;
+
+      // 本地图直接发；memecub 的先下载
+      let file = picked.origin === 'local' ? stickerFile(picked.id) : null;
+      if (!file && picked.remoteUrl) {
+        const dir = join(LIBRARY_DIR, '..', 'output', 'memes');
+        mkdirSync(dir, { recursive: true });
+        const res = await fetch(picked.remoteUrl, { signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) {
+          console.log(chalk.red(`下载失败 HTTP ${res.status}`));
+          return;
+        }
+        const ctype = String(res.headers.get('content-type') ?? '');
+        const ext = ctype.includes('png') ? 'png' : ctype.includes('gif') ? 'gif' : ctype.includes('webp') ? 'webp' : 'jpg';
+        file = join(dir, `meme-${Date.now()}.${ext}`);
+        writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+      }
+      if (!file) {
+        console.log(chalk.red('拿不到图片文件'));
+        return;
+      }
+
+      if (!safetyManager.isAllowed(Number(to))) {
+        console.log(chalk.red(`会话 ${to} 未授权发送（qce safety allow ${to}）`));
+        return;
+      }
+      try {
+        const client = authManager.getClient();
+        const message = [{ type: 'image', data: { file } }] as any;
+        if (kind === 'group') await client.sendGroupMessage(Number(to), message);
+        else await client.sendPrivateMessage(Number(to), message);
+        console.log(chalk.green(`表情已发送到 ${kind === 'group' ? '群' : 'QQ'} ${to}`));
+      } catch (error) {
+        console.log(chalk.red(`发送失败: ${(error as Error).message}`));
       }
     });
 

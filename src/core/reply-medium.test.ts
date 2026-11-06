@@ -80,3 +80,30 @@ describe('decideMedium', () => {
     expect((await decideMedium({ reply: 'x' }, { apiKey: 'k', fetchImpl: fake })).medium).toBe('text');
   });
 });
+
+describe('斗图：收到表情包回表情', () => {
+  it('对方发表情包 → medium 为 sticker', () => {
+    const d = rulesMedium({ reply: '哈哈', incomingText: '', incomingIsSticker: true });
+    expect(d.medium).toBe('sticker');
+    expect(d.reason).toContain('斗图');
+  });
+
+  it('表情包优先于默认文字', () => {
+    expect(rulesMedium({ reply: 'x', incomingIsSticker: true }).medium).toBe('sticker');
+  });
+
+  it('对方发语音仍然回语音（语音优先）', () => {
+    const d = rulesMedium({ reply: 'x', incomingIsVoice: true, incomingIsSticker: true });
+    expect(d.medium).toBe('voice');
+  });
+
+  it('对方要求打字时不发表情', () => {
+    const d = rulesMedium({ reply: 'x', incomingText: '别发表情，打字', incomingIsSticker: true });
+    expect(d.medium).toBe('text');
+  });
+
+  it('普通图片（不是表情包）不回表情', () => {
+    const d = rulesMedium({ reply: 'x', incomingIsSticker: false });
+    expect(d.medium).toBe('text');
+  });
+});

@@ -201,6 +201,35 @@ function hasVoice(msg) {
   return Array.isArray(msg.message) && msg.message.some((s) => s.type === 'record');
 }
 
+/**
+ * 是不是表情包（斗图用的），而不是截图/照片。
+ *
+ * 区分依据：
+ *   1. `face` / `mface` 段 = QQ 内置表情 → 确定是表情
+ *   2. `image` 段且 sub_type 是 1（表情）或 summary 带方括号（如 [呵呵]）→ 表情
+ *   3. 文字部分为空或只有很少字 → 更像纯表情互动
+ */
+function hasSticker(msg) {
+  if (!Array.isArray(msg.message)) return false;
+  let hasImage = false;
+  for (const s of msg.message) {
+    if (s.type === 'face' || s.type === 'mface') return true;
+    if (s.type === 'image') {
+      hasImage = true;
+      const d = s.data ?? {};
+      if (String(d.sub_type) === '1') return true;
+      if (/^\[.+\]$/.test(String(d.summary ?? ''))) return true;
+    }
+  }
+  if (!hasImage) return false;
+  // 有图但文字很多 → 是在说事，不是斗图
+  const textLen = msg.message
+    .filter((s) => s.type === 'text')
+    .map((s) => String(s.data?.text ?? ''))
+    .join('').trim().length;
+  return textLen <= 3;
+}
+
 // ————— 回复生成（复用 qchat-cli 的 core）—————
 let core = null;
 async function loadCore() {
@@ -243,6 +272,18 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
   const key = `${kind === 'group' ? 'g' : 'p'}${peer}`;
   const now = Math.floor(Date.now() / 1000);
 
+  // 被骂标记先算出来：后面所有 return 都要带它，
+  // 否则「@ 我 + 骂我」会走上方的快速通道，还嘴指令就丢了。
+  const lastText = String(recent[recent.length - 1]?.text ?? '');
+  let abused = false;
+  try {
+    const c0 = await loadCore();
+    abused = c0.gate.detectAbuse(lastText, {
+      groupSize: kind === 'group' ? await groupSize(peer) : 0,
+      mentioned,
+    });
+  } catch { abused = false; }
+
   // —— 硬规则：这些不管 Jev 说什么都不回 ——
   if (cfg.allow.length > 0 && !cfg.allow.includes(String(peer))) return { reply: false, reason: '不在白名单' };
   if (kind === 'group' && !cfg.groups.includes(Number(peer))) return { reply: false, reason: '该群不在自动回复列表' };
@@ -262,7 +303,9 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
   }
 
   // —— @ 我 / 私聊：直接通过 ——
-  if (mentioned || kind === 'private') return { reply: true, reason: mentioned ? '@ 到我' : '私聊' };
+  if (mentioned || kind === 'private') {
+    return { reply: true, ...(abused ? { abuse: true } : {}), reason: mentioned ? '@ 到我' : '私聊' };
+  }
 
   // —— 群里没 @：Jev 判断 ——
   if (cfg.requireMentionInGroup) return { reply: false, reason: '群里没 @ 我（已配置必须 @）' };
@@ -279,6 +322,16 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
     if (gate.decision !== 'reply') {
       return { reply: false, reason: `Jev 说 ${gate.decision}（${gate.source} ${gate.confidence.toFixed(2)}）` };
     }
+
+    // 被骂 → 必回，绕过概率阻尼。
+    //
+    // 踩过的坑：abuse 在闸门里已被判为 reply，但这里又过了 35% 阻尼，
+    // 结果「你是个傻逼」被跳过，日志写着"Jev 说该回，但概率阻尼未命中"。
+    // 阻尼的目的是防止"每句都插嘴"，而挨骂必须还嘴——两者根本不是一个场景。
+    if (gate.abuse) {
+      return { reply: true, abuse: true, reason: '被骂了，必回（绕过阻尼）' };
+    }
+
     // 二次阻尼：Jev 说该回，也不是每次都回——避免"每句都插嘴"
     if (Math.random() > cfg.freeChatProbability) {
       return { reply: false, reason: `Jev 说该回，但概率阻尼未命中（${cfg.freeChatProbability}）` };
@@ -354,6 +407,7 @@ async function processMessage(kind, peer, msg, history, self) {
   const text = flatten(msg.message);
   const mentioned = mentionsSelf(msg, self);
   const voice = hasVoice(msg);
+  const sticker = hasSticker(msg);
 
   const decision = await shouldReply(kind, peer, meta.mentioned, meta.time, history);
   if (!decision.reply) {
@@ -387,11 +441,37 @@ async function processMessage(kind, peer, msg, history, self) {
     reply: replyText,
     incomingText: text,
     incomingIsVoice: voice,
+    incomingIsSticker: sticker,
     isPrivate: kind === 'private',
   });
   log(`媒介: ${medium.medium}（${medium.source}）${medium.reason}`);
 
   let message = replyText;
+
+  // 斗图：对方发表情包，回一张表情（配一句短文字）
+  if (medium.medium === 'sticker') {
+    try {
+      const picked = await c.sticker.pickStickerMerged(replyText.slice(0, 40) || text.slice(0, 40));
+      if (picked) {
+        let imgPath = null;
+        if (picked.origin === 'memecub' && picked.remoteUrl) {
+          imgPath = await downloadMeme(c, picked.remoteUrl);
+        } else {
+          imgPath = c.sticker.stickerFile(picked.id);
+        }
+        if (imgPath) {
+          message = [
+            ...(replyText.trim() ? [{ type: 'text', data: { text: replyText.trim() } }] : []),
+            { type: 'image', data: { file: imgPath } },
+          ];
+          log(`  斗图: ${picked.label.slice(0, 26)}（${picked.origin}）`);
+        }
+      }
+    } catch (e) {
+      log(`  斗图失败，退回纯文字: ${e.message}`);
+    }
+  }
+
   if (medium.medium === 'voice') {
     const audio = await makeVoice(replyText);
     if (audio) {

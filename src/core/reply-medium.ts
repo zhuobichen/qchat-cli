@@ -9,7 +9,7 @@
  */
 import { JEV_ENDPOINT, JEV_MODEL } from './sticker.js';
 
-export type ReplyMedium = 'text' | 'voice';
+export type ReplyMedium = 'text' | 'voice' | 'sticker';
 
 export interface MediumInput {
   /** 我要回复的内容 */
@@ -20,6 +20,13 @@ export interface MediumInput {
   incomingIsVoice?: boolean;
   /** 对方这条消息是不是图片 */
   incomingIsImage?: boolean;
+  /**
+   * 对方这条消息是不是**表情包**（斗图用的那种，不是随手拍的照片）。
+   *
+   * 为什么和图片分开：斗图场景下回一张表情才叫接招，回一段文字等于认输。
+   * 但对方发的是截图/照片时，回表情就很怪——那是要看内容的。
+   */
+  incomingIsSticker?: boolean;
   /** 当前会话是不是私聊 */
   isPrivate?: boolean;
 }
@@ -53,6 +60,10 @@ export function rulesMedium(input: MediumInput): MediumDecision {
   }
   if (input.incomingIsVoice) {
     return { medium: 'voice', reason: '对方发的是语音，回语音更自然', source: 'rules', confidence: 1 };
+  }
+  // 斗图：对方发表情包，回一张才叫接招
+  if (input.incomingIsSticker) {
+    return { medium: 'sticker', reason: '对方发的是表情包，斗图得回图', source: 'rules', confidence: 1 };
   }
   if (VOICE_TRIGGERS.some((k) => text.includes(k))) {
     return { medium: 'voice', reason: '对方要求听声音/唱歌', source: 'rules', confidence: 1 };
