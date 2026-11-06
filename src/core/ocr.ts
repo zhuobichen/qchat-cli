@@ -22,15 +22,38 @@ export function defaultOcrScript(): string {
   return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'ocr_image.py');
 }
 
+let cachedPython: string | null = null;
+
 /**
- * 调 Python 侧 OCR。失败返回空 map（调用方决定是否告警），不抛。
+ * 找一个真的装了 rapidocr 的 Python。
+ * Windows 上常有多个 python（Store 存根 / 另一个版本），直接用 `python`
+ * 可能落到没装依赖的那个上，于是"OCR 静默返回空"。
+ */
+export function resolvePython(explicit?: string): string {
+  if (explicit) return explicit;
+  if (process.env.QCE_PYTHON) return process.env.QCE_PYTHON;
+  if (cachedPython) return cachedPython;
+
+  const candidates = ['python', 'py', 'python3'];
+  for (const bin of candidates) {
+    const probe = spawnSync(bin, ['-c', 'import rapidocr_onnxruntime'], { encoding: 'utf8', timeout: 20_000 });
+    if (probe.status === 0) {
+      cachedPython = bin;
+      return bin;
+    }
+  }
+  return 'python';
+}
+
+/**
+ * 调 Python 侧 OCR。失败返回空数组（调用方决定是否告警），不抛。
  */
 export function runOcr(
   files: string[],
   options: { python?: string; script?: string; timeoutMs?: number } = {},
 ): OcrResult[] {
   if (files.length === 0) return [];
-  const python = options.python || process.env.QCE_PYTHON || 'python';
+  const python = resolvePython(options.python);
   const script = options.script || process.env.QCE_OCR_SCRIPT || defaultOcrScript();
   if (!existsSync(script)) return [];
 

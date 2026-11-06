@@ -106,7 +106,13 @@ export function indexCommand(program: Command): void {
               const paths: string[] = [];
               for (const ref of doc.images ?? []) {
                 try {
-                  const info = await (client as any).getImage(ref);
+                  const info: any = await (client as any).getImage(ref);
+                  // NapCat 通常直接给本地缓存路径；优先用它，省一次下载
+                  const localFile = typeof info?.file === 'string' ? info.file : '';
+                  if (localFile && existsSync(localFile)) {
+                    paths.push(localFile);
+                    continue;
+                  }
                   const url = String(info?.url ?? '');
                   if (url.startsWith('file://')) {
                     const local = decodeURIComponent(url.slice('file://'.length));

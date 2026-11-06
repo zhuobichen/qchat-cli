@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.11.0] - 2026-11-06
+
+### Fixed
+
+- **图片 OCR 静默失败**：`get_image` 返回的是本地缓存路径（`...
+t_data\Pic\...`），原实现只处理 `file://` / `http` 两种 URL，导致 `index --ocr` 永远 `OCR +0`。现在优先用本地路径，省一次下载。
+- **Python 解释器选错**：Windows 上常有多个 `python`（Store 存根 / 多版本），落到没装 `rapidocr_onnxruntime` 的那个时 OCR 会静默返回空。现在 `resolvePython()` 会逐个探测 `python` / `py` / `python3`，用第一个真的能 `import rapidocr_onnxruntime` 的解释器，并缓存结果。
+
+### Verified（真实群数据）
+
+- 群 `913807639`（41 人）：索引 14 条 → `--ocr` 生成 1 条合成消息 `ocr:386331545:0`
+- 识别结果：`时间 类型 比赛时长 击杀 历史战绩 … 海克斯大乱斗 23分钟 89/59 …`
+- `qce search 海克斯` / `qce search 击杀` 均命中该条（证明"截图里的字可搜"闭环成立）
+- 群文件真实数据：`files list` 50 个 / 475 MB，`files stats` 按扩展名分布正常
+
 ## [0.10.0] - 2026-11-06
 
 ### Added
