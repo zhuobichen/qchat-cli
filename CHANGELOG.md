@@ -2,6 +2,18 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.23.1] - 2026-11-06
+
+### Fixed
+
+- **`qce-auto` Windows 路径导入崩溃**：`import('D:/...')` 在 ESM loader 上必须用 `file://` URL（`pathToFileURL`），修前生成回复必失败进死信
+- **`qce-auto` 循环被 ReferenceError 中断**：debug 分支引用了已改名的 `message.time`（应为 `meta.time`），异常被外层 catch 吞掉 → 每轮只处理第一条消息
+- **`qce-auto` 媒介判断未 await**：`decideMedium` 是 async，未 await 导致日志显示 `undefined`
+
+### Verified
+
+- 真机：私聊「你是?」→ 2 秒内自动回复成功（模型 `qwen3.7-flash`）
+
 ## [0.23.0] - 2026-11-06
 
 ### Added

@@ -16,6 +16,7 @@
  *   node scripts/qce-auto.mjs --replay <id>
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -201,17 +202,19 @@ let core = null;
 async function loadCore() {
   if (core) return core;
   const dist = join(ROOT, 'dist', 'core');
+  // Windows 上绝对路径必须转 file:// URL 才能被 ESM loader 接受
+  const imp = (name) => import(pathToFileURL(join(dist, name)).href);
   core = {
-    group: await import(join(dist, 'group-agent.js')),
-    gate: await import(join(dist, 'reply-gate.js')),
-    medium: await import(join(dist, 'reply-medium.js')),
-    reliability: await import(join(dist, 'reliability.js')),
-    tts: await import(join(dist, 'tts.js')),
-    persona: await import(join(dist, 'persona.js')),
-    profile: await import(join(dist, 'profile-store.js')),
-    memory: await import(join(dist, 'memory.js')),
-    context: await import(join(dist, 'group-context.js')),
-    store: await import(join(dist, 'message-store.js')),
+    group: await imp('group-agent.js'),
+    gate: await imp('reply-gate.js'),
+    medium: await imp('reply-medium.js'),
+    reliability: await imp('reliability.js'),
+    tts: await imp('tts.js'),
+    persona: await imp('persona.js'),
+    profile: await imp('profile-store.js'),
+    memory: await imp('memory.js'),
+    context: await imp('group-context.js'),
+    store: await imp('message-store.js'),
   };
   return core;
 }
@@ -279,12 +282,13 @@ async function makeVoice(text) {
 }
 
 async function processMessage(kind, peer, msg, history, self) {
+  const meta = { kind, peer, mentioned: mentionsSelf(msg, self), time: msg.time, senderId: msg.sender?.user_id };
   const key = `${kind === 'group' ? 'g' : 'p'}${peer}`;
   const text = flatten(msg.message);
   const mentioned = mentionsSelf(msg, self);
   const voice = hasVoice(msg);
 
-  const decision = await shouldReply(kind, peer, mentioned, msg.time);
+  const decision = await shouldReply(kind, peer, meta.mentioned, meta.time);
   if (!decision.reply) {
     state.stats.skipped += 1;
     // 只有"值得注意"的跳过才记日志；太老/间隔不足是常态
@@ -312,7 +316,7 @@ async function processMessage(kind, peer, msg, history, self) {
 
   // 文字还是语音
   const c = await loadCore();
-  const medium = c.medium.decideMedium({
+  const medium = await c.medium.decideMedium({
     reply: replyText,
     incomingText: text,
     incomingIsVoice: voice,
@@ -483,9 +487,7 @@ log(`自动回复启动: 每 ${cfg.intervalSec}s，私聊${cfg.includePrivate ? 
 log(`白名单: ${cfg.allow.join(',') || '不限'}；语音: ${cfg.allowVoice ? (cfg.ttsEndpoint || '未配置本地服务') : '关'}`);
 
 if (ONCE) {
-  log('step: runOnce 开始');
   await runOnce();
-  log('step: runOnce 结束');
   saveState(state);
   // Node 24 + undici keep-alive：Windows 上 process.exit() 会撞 uv assertion
   // 改成「自然退出」：把引用计数降到 0，让事件循环自己收尾
