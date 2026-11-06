@@ -425,26 +425,37 @@ async function processMessage(kind, peer, msg, history, self) {
 
       // 补一张表情：文字说完，配个图更像人在聊天
       //
-      // 只在文字回复时配（语音后面再甩张图很奇怪），且按概率来——
-      // 每次都配会显得机械，隔几句来一张才自然。
-      if (medium.medium === 'text' && cfg.emojiChance > 0 && Math.random() < cfg.emojiChance) {
+      // 只在文字回复时配（语音后面再甩张图很奇怪）。
+      // 由 Jev 决定要不要配、用什么情绪——比随机数准：
+      // 正经解释和安慰人不该配，接梗和自嘲该配。
+      if (medium.medium === 'text' && cfg.emojiChance > 0) {
         try {
           const core = await loadCore();
-          const picked = await core.sticker.pickStickerMerged(replyText.slice(0, 60));
-          if (picked) {
-            let imgPath = null;
-            if (picked.origin === 'memecub' && picked.remoteUrl) {
-              imgPath = await downloadMeme(core, picked.remoteUrl);
-            } else {
-              imgPath = core.sticker.stickerFile(picked.id);
-            }
-            if (imgPath) {
-              await api(kind === 'group' ? 'send_group_msg' : 'send_private_msg',
-                kind === 'group'
-                  ? { group_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] }
-                  : { user_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] },
-                25000);
-              log(`  配图: ${picked.label.slice(0, 30)}（${picked.origin}）`);
+          const judge = await core.gate.decideSticker(replyText, {
+            recent: history.slice(-4).map((m) => `${m.sender}: ${m.text}`),
+            chance: cfg.emojiChance,
+          });
+          log(`  配图判断: ${judge.reason}`);
+
+          if (judge.add) {
+            const picked = await core.sticker.pickStickerMerged(judge.mood || replyText.slice(0, 60));
+            if (picked) {
+              let imgPath = null;
+              if (picked.origin === 'memecub' && picked.remoteUrl) {
+                imgPath = await downloadMeme(core, picked.remoteUrl);
+              } else {
+                imgPath = core.sticker.stickerFile(picked.id);
+              }
+              if (imgPath) {
+                await api(
+                  kind === 'group' ? 'send_group_msg' : 'send_private_msg',
+                  kind === 'group'
+                    ? { group_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] }
+                    : { user_id: Number(peer), message: [{ type: 'image', data: { file: imgPath } }] },
+                  25000,
+                );
+                log(`  配图: ${picked.label.slice(0, 30)}（${picked.origin}）`);
+              }
             }
           }
         } catch (e) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGateBody, parseGateAnswer, rulesDecision, gateReply, GATE_CRITERIA, type GateContext, detectAbuse } from './reply-gate.js';
+import { buildGateBody, parseGateAnswer, rulesDecision, gateReply, GATE_CRITERIA, type GateContext, detectAbuse, decideSticker } from './reply-gate.js';
 
 const ctx = (over: Partial<GateContext> = {}): GateContext => ({
   trigger: 'ambient',
@@ -198,5 +198,50 @@ describe('gateReply 被骂优先', () => {
   it('从 recent 里去掉昵称前缀再判断', async () => {
     const r = await gateReply({ trigger: 'ambient', recent: ['冷峰沉睡: 你是个傻逼'], groupSize: 2 }, { apiKey: '' });
     expect(r.abuse).toBe(true);
+  });
+});
+
+describe('decideSticker 配图判断', () => {
+  const ok = (choice: string, conf: number, mood = 'laugh') =>
+    (async () => ({ ok: true, json: async () => ({ answers: { m0: { choice, confidence: conf }, m1: { choice: mood } } }) } as any)) as unknown as typeof fetch;
+
+  it('Jev 说该配 → add 且带情绪词', async () => {
+    const d = await decideSticker('哈哈哈哈哈太惨了', { recent: ['a: b'] }, { apiKey: 'k', fetchImpl: ok('add', 0.9, 'laugh') });
+    expect(d.add).toBe(true);
+    expect(d.mood).toBe('笑哭');
+    expect(d.source).toBe('jev');
+  });
+
+  it('Jev 说不配 → add=false', async () => {
+    const d = await decideSticker('这个函数要在 3000 端口调用', {}, { apiKey: 'k', fetchImpl: ok('skip', 0.95) });
+    expect(d.add).toBe(false);
+    expect(d.source).toBe('jev');
+  });
+
+  it('置信度不够 → 回落随机', async () => {
+    const d = await decideSticker('随便', {}, { apiKey: 'k', fetchImpl: ok('add', 0.2), minConfidence: 0.55 });
+    expect(d.source).toBe('random');
+  });
+
+  it('无 key → 回落随机', async () => {
+    const d = await decideSticker('随便', {}, { apiKey: '' });
+    expect(d.source).toBe('random');
+  });
+
+  it('请求失败 → 回落随机', async () => {
+    const boom = (async () => { throw new Error('offline'); }) as unknown as typeof fetch;
+    const d = await decideSticker('随便', {}, { apiKey: 'k', fetchImpl: boom });
+    expect(d.source).toBe('random');
+  });
+
+  it('各情绪映射正确', async () => {
+    const cases: Array<[string, string]> = [
+      ['laugh', '笑哭'], ['speechless', '无语'], ['angry', '生气'],
+      ['sad', '委屈'], ['slack', '摆烂'], ['smug', '嘲讽'], ['shock', '震惊'],
+    ];
+    for (const [key, word] of cases) {
+      const d = await decideSticker('x', {}, { apiKey: 'k', fetchImpl: ok('add', 0.9, key) });
+      expect(d.mood).toBe(word);
+    }
   });
 });

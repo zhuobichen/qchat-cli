@@ -185,3 +185,108 @@ export function detectAbuse(text: string, context: { groupSize?: number; mention
   if (/机器人|朝闻|这bot|the bot/i.test(t)) return true;
   return /你/.test(t);
 }
+
+/** 配图决策的结果 */
+export interface StickerDecision {
+  /** 要不要补一张表情 */
+  add: boolean;
+  /** 用什么情绪去找图（Jev 给的关键词，空则用回复原文） */
+  mood: string;
+  confidence: number;
+  source: 'jev' | 'random';
+  reason?: string;
+}
+
+/**
+ * 让 Jev 判断「这条回复该不该补一张表情」，顺便给出找图的情绪词。
+ *
+ * 为什么换掉随机数：随机只保证频率，不保证合适。
+ * 「我这就去死」和「哈哈哈太惨了」都是回复，但前者配图很怪。
+ * Jev 能按语义判断，而且顺手给出情绪词——比我们手写的同义词表准。
+ *
+ * 一次请求决定两件事（要不要 + 什么情绪），不多花一次调用。
+ * Jev 不可用或置信度不够时回落随机，保证功能不会因为 Jev 挂了就消失。
+ */
+export async function decideSticker(
+  reply: string,
+  context: { recent?: string[]; chance?: number } = {},
+  options: GateOptions = {},
+): Promise<StickerDecision> {
+  const fallback = (): StickerDecision => ({
+    add: Math.random() < (context.chance ?? 0.35),
+    mood: '',
+    confidence: 1,
+    source: 'random',
+    reason: 'Jev 不可用，回落随机',
+  });
+
+  const apiKey = options.apiKey ?? process.env.JEV_API_KEY ?? '';
+  if (!apiKey) return fallback();
+
+  const recent = (context.recent ?? []).slice(-4).join('\n');
+  const body = {
+    model: JEV_MODEL,
+    state: `最近的对话：\n${recent}\n\n我刚生成了一条回复：\n${reply}`,
+    questions: {
+      m0: {
+        type: 'choice',
+        instructions:
+          '判断这条回复后面该不该补一张表情包。' +
+          '表情包是用来加语气、接梗、自嘲的；正经解释、报错说明、安慰别人时不该配。',
+        criteria: {
+          add: '该配：这条回复情绪明确（好笑/无语/生气/委屈/得意/摆烂），配张图更生动',
+          skip: '不该配：这条是正经解释/回答问题/安慰人/说事实，配图反而显得轻浮',
+        },
+      },
+      // 注意：Jev 只支持 noul / choice / score / box 四种题型，**没有 text**。
+      // 用 text 会让整个请求 400，然后静默回落到随机——踩过一次。
+      m1: {
+        type: 'choice',
+        instructions: '如果要配图，用哪种情绪的表情最贴？',
+        criteria: {
+          laugh: '笑哭 / 好笑 / 太惨了',
+          speechless: '无语 / 离谱 / 服了',
+          angry: '生气 / 怼人 / 不服',
+          sad: '委屈 / 难过 / 破防',
+          slack: '摆烂 / 躺平 / 累',
+          smug: '得意 / 嘲讽 / 阴阳',
+          shock: '震惊 / 懵圈 / 啊这',
+        },
+      },
+    },
+  };
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(options.endpoint ?? JEV_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
+    });
+    if (!res.ok) return fallback();
+    const json: any = await res.json();
+
+    const choice = json?.answers?.m0?.choice;
+    const confidence = Number(json?.answers?.m0?.confidence);
+    if (choice !== 'add' && choice !== 'skip') return fallback();
+    if (!Number.isFinite(confidence) || confidence < (options.minConfidence ?? 0.55)) return fallback();
+
+    const MOOD_WORDS: Record<string, string> = {
+      laugh: '笑哭', speechless: '无语', angry: '生气',
+      sad: '委屈', slack: '摆烂', smug: '嘲讽', shock: '震惊',
+    };
+    const rawMood = String(json?.answers?.m1?.choice ?? '');
+    const mood = MOOD_WORDS[rawMood] ?? '';
+
+    return {
+      add: choice === 'add',
+      mood,
+      confidence,
+      source: 'jev',
+      reason: `Jev 判断${choice === 'add' ? '该配' : '不配'}（${confidence.toFixed(2)}）${mood ? `，情绪「${mood}」` : ''}`,
+    };
+  } catch {
+    return fallback();
+  }
+}
