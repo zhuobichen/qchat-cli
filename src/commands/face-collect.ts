@@ -13,6 +13,7 @@ import {
   pickUnlabeled, describeImage, readEmojiBytes, loadManifestFile, saveManifest,
 } from '../core/emoji-label.js';
 import { addDirectoryToLibrary, loadLibraryManifest } from '../core/emoji-add.js';
+import { facePeekCommand } from './face-peek.js';
 import { pickStickerMerged, stickerFile } from '../core/sticker.js';
 
 const LIBRARY_DIR = 'private/emoji-library';
@@ -30,6 +31,8 @@ function loadManifest(): { version: 1; emojis: Array<{ hash: string; label: stri
 export function faceCommandExtended(program: Command): void {
   const target = program.commands.find((c) => c.name() === 'face');
   if (!target) return;   // face 命令由 faceCommand 负责创建，这里只挂子命令
+
+  target.addCommand(facePeekCommand);
 
   target
     .command('collect [group]')

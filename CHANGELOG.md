@@ -2,6 +2,28 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.31.0] - 2026-11-07
+
+### Added
+
+- **`qce face peek`**：一条命令把一张图弄明白
+  - `qce face peek --group <群号>` 取群里最新一张图
+  - `qce face peek <messageId>` 取指定消息里的图
+  - 自动做四件事：定位图片段 → 拿本地文件 → **动图抽帧拼成对比图** → 统一识图模块出「文字 + 情绪 + 角色」
+  - `--frames <n>` 调抽几帧（默认 4，含首尾帧，均匀取样）
+  - `--json` 输出结构化结果
+  - 小图（≤64px）会警告"可能只是缩略图，细节认不准"
+
+### Notes
+
+- 抽帧拼图的理由：动图的意思常在动作里。之前把奶龙的震惊图只看第一帧，认成了"黄色怪鱼"
+- 格式按**魔数**判断而非扩展名（QQ 的 `.jpg` 里常年装着 GIF）
+- 实测：熊猫头「挺好的」敷衍表情 → 正确识别出"敷衍式赞同或表面应付"
+
+### Fixed
+
+- `getGroupMsgHistory` 签名是 `(groupId, messageSeq?, count)`，把 count 传成第二个参数会报 `消息20不存在`
+
 ## [0.30.0] - 2026-11-07
 
 ### Changed
