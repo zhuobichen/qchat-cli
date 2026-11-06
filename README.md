@@ -169,7 +169,30 @@ qce proactive run --to 10001000 --dry           # 主动聊天决策（免打扰
 qce proactive config --quiet 23-8 --max 3
 ```
 
-**9）自动化与运维**
+**9）常驻自动回复**
+
+```bash
+node scripts/qce-auto.mjs              # 常驻（2 秒一轮）
+node scripts/qce-auto.mjs --once       # 单轮调试
+node scripts/qce-auto.mjs --status     # 状态
+node scripts/qce-auto.mjs --dlq        # 死信
+node scripts/qce-auto.mjs --replay <id> # 重放死信
+```
+
+配置 `private/auto-reply.config.json`：
+
+| 字段 | 说明 |
+|---|---|
+| `allow` | 允许回复的会话白名单（QQ 号/群号），空=不限 |
+| `groups` | 允许自动回复的群 |
+| `requireMentionInGroup` | 群里必须 @ 才回（默认开） |
+| `minReplyGapSec` | 同会话两次回复的最小间隔 |
+| `maxAgeSec` | 超过这个年龄的消息不回 |
+| `allowVoice` + `ttsEndpoint` / `ttsRefAudio` / `ttsPromptText` | 语音回复（本地克隆音色） |
+
+可靠性：状态原子写入（断电不丢水位，重启接着跑）· 失败重试 3 次 · 连续失败熔断 60s · 彻底失败进死信可重放。
+
+**10）自动化与运维**
 
 ```bash
 qce send group <群号> "..."              # 发送（需先 safety enable + 白名单）

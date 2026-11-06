@@ -2,6 +2,27 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.23.0] - 2026-11-06
+
+### Added
+
+- **常驻自动回复进程 `scripts/qce-auto.mjs`**
+  - 循环：轮询新消息 → 判断该不该回 → 生成回复 → 决定文字/语音 → 发送
+  - **2 秒轮询**（好友/群列表缓存 60s，不重复拉）
+  - 幂等：message id 去重，重复跑不重复回
+  - **断点续传**：状态原子写入（.tmp→rename），关机再开机从上次位置继续
+  - 可靠性：生成失败/发送失败重试 3 次；连续失败 5 次熔断 60s；彻底失败进 DLQ（`--dlq` 查看，`--replay <id>` 重放）
+  - 语音：本地克隆音色（`ttsEndpoint`/`ttsRefAudio`/`ttsPromptText`）
+  - 上下文注入：群 → 人格 + 成员画像；私聊 → 长期记忆
+  - 配置 `private/auto-reply.config.json`：`allow` 白名单 / `groups` / `requireMentionInGroup` / `minReplyGapSec` / `maxAgeSec` / `allowVoice`
+  - 命令：`--once` 单轮、`--status` 状态、`--dlq` 死信、`--replay <id>` 重放
+
+### Fixed
+
+- `qce-auto` 好友列表取 `user_id`（NapCat 的 `get_friend_list` 返回 `user_id/nickname`，不是 `peerUin`）——修前一条消息都收不到
+- `qce-auto` 排除自己的会话（避免 `get_friend_msg_history` 报「消息不存在」）
+- Node 24 + undici 在 Windows 上 `process.exit()` 触发 uv assertion → 改为自然退出（`process.exitCode` + 2s 兜底强退）
+
 ## [0.22.0] - 2026-11-06
 
 ### Added

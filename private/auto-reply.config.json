@@ -1,0 +1,17 @@
+{
+  "http": "http://127.0.0.1:3000",
+  "groups": [],
+  "includePrivate": true,
+  "allow": [
+    "1473517806"
+  ],
+  "intervalSec": 2,
+  "maxAgeSec": 600,
+  "minReplyGapSec": 30,
+  "requireMentionInGroup": true,
+  "allowVoice": true,
+  "ttsEndpoint": "http://127.0.0.1:9880",
+  "ttsRefAudio": "D:/github_project/ZhaoWen_GitHub维护/_tts/ref/user16k.wav",
+  "ttsPromptText": "关注永雏塔菲关注永雏塔菲谢谢喵",
+  "outputDir": "D:/github_project/ZhaoWen_GitHub维护/_tts/out"
+}
