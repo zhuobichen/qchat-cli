@@ -2,6 +2,28 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.0] - 2026-11-06
+
+### Added
+
+- **待回复队列**（`scripts/qce-queue.mjs` + `qce queue`）
+  - QQ 消息进来 → 入队落盘 → 会话里的我处理 → 出队
+  - 队列落盘，进程崩了/断线了消息还在，重启接着处理
+  - `take` 标记 processing；`reclaim` 把超时的 processing 重新入队
+  - `qce queue list|take|done <id>|skip <id>|reclaim`
+- **watcher 接入队列**：投递到会话的同时入队，带上下文与回复提示
+
+### Changed
+
+- **回复由会话内的「我」生成**，不再由独立进程另调模型：`qce-auto` 停用
+  - 这样走的是本地 harness 环境——同一套模型、记忆、人格、工具
+  - `qce-auto` 保留可用（独立进程自带模型配置），需要时再起
+
+### Notes
+
+- DSH supervisor 的 `POST /chat` 是单向投递（不返回助手回复），`tail` 只认 `source.kind==='user'` 的消息，所以「读回回复」不可行；
+  改为「投递 + 入队」：我被唤醒后在会话里自己产出回复，再用 `qce send` 发出去
+
 ## [0.23.1] - 2026-11-06
 
 ### Fixed

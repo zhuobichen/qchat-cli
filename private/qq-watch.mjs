@@ -23,6 +23,7 @@
  *   node private/qq-watch.mjs --replay-dlq  # 重放死信队列
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, renameSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +37,7 @@ const STATE_PATH = join(ROOT, 'private', 'qq-watch.state.json');
 const INBOX = join(ROOT, 'output', 'qq-inbox.jsonl');
 const LOG_PATH = join(ROOT, 'output', 'qq-watch.log');
 const DLQ_PATH = join(ROOT, 'output', 'qq-watch.dlq.jsonl');
+const QUEUE_SCRIPT = join(ROOT, 'scripts', 'qce-queue.mjs');
 
 const ONCE = process.argv.includes('--once');
 const STATUS = process.argv.includes('--status');
@@ -227,6 +229,13 @@ async function replayDlq() {
   }
   writeFileSync(DLQ_PATH, kept.join('\n') + (kept.length ? '\n' : ''), 'utf8');
   console.log(`重放完成：成功 ${ok}，保留 ${kept.length}`);
+}
+
+/** 把消息放进待回复队列（会话里的我按队列处理） */
+function enqueue(payload) {
+  try {
+    spawnSync(process.execPath, [QUEUE_SCRIPT, 'add', JSON.stringify(payload)], { encoding: 'utf8' });
+  } catch (e) { log('入队失败: ' + e.message); }
 }
 
 async function api(action, params = {}) {
