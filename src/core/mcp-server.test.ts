@@ -7,6 +7,8 @@ function makeBackend(): McpBackend {
     digest: vi.fn(async () => ({ total: 3, participants: 2 })),
     listGroups: vi.fn(async () => [{ group_id: 100, group_name: '测试群' }]),
     send: vi.fn(async () => ({ ok: true })),
+    pickSticker: vi.fn(async ({ stickerId }: any) => ({ id: stickerId ?? 'a'.repeat(64), label: '测试表情', source: stickerId ? 'explicit' : 'jev' })),
+    sendSticker: vi.fn(async () => ({ ok: true })),
   };
 }
 
@@ -22,7 +24,7 @@ describe('MCP server', () => {
   it('tools/list 暴露三个工具且带 inputSchema', async () => {
     const res = await handleMessage(makeBackend(), { jsonrpc: '2.0', id: 2, method: 'tools/list' });
     const tools = (res?.result as { tools: typeof TOOLS }).tools;
-    expect(tools.map((t) => t.name)).toEqual(['search_messages', 'group_digest', 'list_groups', 'send_message']);
+    expect(tools.map((t) => t.name)).toEqual(['search_messages', 'group_digest', 'list_groups', 'send_sticker', 'send_message']);
     for (const t of tools) expect(t.inputSchema).toBeTypeOf('object');
   });
 
@@ -173,5 +175,57 @@ describe('send_message（两阶段确认）', () => {
     const second = await callWith(backend, { kind: 'group', target: 913807639, text: '群公告', confirmationToken: token }, { allowGroupSend: true });
     expect((second?.result as any).isError).toBeUndefined();
     expect(backend.send).toHaveBeenCalledWith({ kind: 'group', target: 913807639, text: '群公告' });
+  });
+});
+
+describe('send_sticker（两阶段确认 + Jev 选择）', () => {
+  const callWith = (backend: McpBackend, args: any, options: any = {}) =>
+    handleMessage(backend, {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'send_sticker', arguments: args },
+    }, options);
+
+  beforeEach(() => __clearPending());
+
+  it('群发默认被拒', async () => {
+    const backend = makeBackend();
+    const res = await callWith(backend, { kind: 'group', target: 913807639, intent: '庆祝' });
+    expect((res?.result as any).isError).toBe(true);
+    expect(backend.sendSticker).not.toHaveBeenCalled();
+  });
+
+  it('既没 intent 也没 stickerId 时报错', async () => {
+    const res = await callWith(makeBackend(), { target: 10001000 });
+    expect((res?.result as any).isError).toBe(true);
+  });
+
+  it('第一阶段选好表情、摘要里带 label，且不发送', async () => {
+    const backend = makeBackend();
+    const res = await callWith(backend, { target: 10001000, intent: '安慰一下' });
+    const text = (res?.result as any).content[0].text as string;
+    expect(text).toContain('待确认');
+    expect(text).toContain('测试表情');
+    expect(text).toMatch(/ctk_/);
+    expect(backend.pickSticker).toHaveBeenCalledWith({ intent: '安慰一下' });
+    expect(backend.sendSticker).not.toHaveBeenCalled();
+  });
+
+  it('带令牌第二阶段才真正发送', async () => {
+    const backend = makeBackend();
+    const first = await callWith(backend, { target: 10001000, intent: '庆祝' });
+    const token = ((first?.result as any).content[0].text as string).match(/ctk_[A-Za-z0-9_]+/)?.[0];
+    const second = await callWith(backend, { target: 10001000, intent: '庆祝', confirmationToken: token });
+    expect((second?.result as any).isError).toBeUndefined();
+    expect(backend.sendSticker).toHaveBeenCalledWith({
+      kind: 'private', target: 10001000, stickerId: 'a'.repeat(64), label: '测试表情',
+    });
+  });
+
+  it('pickSticker 抛错时返回错误内容', async () => {
+    const backend = makeBackend();
+    (backend.pickSticker as any).mockRejectedValueOnce(new Error('表情库为空'));
+    const res = await callWith(backend, { target: 10001000, intent: 'x' });
+    expect((res?.result as any).isError).toBe(true);
+    expect((res?.result as any).content[0].text).toContain('表情库为空');
   });
 });

@@ -109,7 +109,9 @@ qce search 论文 --from 10001000 --limit 50 --json
 }
 ```
 
-暴露四个工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）、`send_message`（发消息，两阶段确认）。
+暴露五个工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）、`send_sticker`（发表情包）、`send_message`（发文字，两阶段确认）。
+
+`send_sticker` 可以用 `intent`（"安慰一下"/"无语"/"庆祝"）让 **Jev 决策模型**从表情库里挑一张——它只做类型化选择并给出置信度，不会编造不存在的表情；没有 `JEV_API_KEY` 或接口失败时自动回退关键词匹配。
 
 `send_message` 的安全设计：
 - **两阶段确认**：第一次只返回摘要和 `confirmation_token`，带上令牌再调一次才真正发送（令牌 5 分钟有效、与内容绑定，改内容即失效）

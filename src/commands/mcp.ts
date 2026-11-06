@@ -6,6 +6,7 @@ import { searchDocs } from '../core/search-index.js';
 import { buildDigest } from '../core/digest.js';
 import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import { safetyManager } from '../core/safety.js';
+import { pickSticker, stickerFile } from '../core/sticker.js';
 
 /**
  * 把 OneBot 客户端包装成 MCP backend。
@@ -60,6 +61,30 @@ function makeBackend(): McpBackend {
       }
       await client.sendPrivateMessage(target, text);
       return { ok: true, kind, target, sentAt: new Date().toISOString() };
+    },
+
+    async pickSticker({ intent, stickerId }) {
+      if (stickerId) {
+        const path = stickerFile(stickerId);
+        if (!path) throw new Error(`表情 ${stickerId} 不存在`);
+        return { id: stickerId, label: '(指定)', source: 'explicit' };
+      }
+      const picked = await pickSticker(String(intent ?? ''));
+      if (!picked) throw new Error('表情库里没有匹配的候选');
+      if (!stickerFile(picked.id)) throw new Error('表情文件缺失');
+      return { id: picked.id, label: picked.label, source: picked.source };
+    },
+
+    async sendSticker({ kind, target, stickerId }) {
+      if (!safetyManager.isAllowed(target)) {
+        throw new Error(`会话 ${target} 未授权发送（先跑 qce safety allow ${target}）`);
+      }
+      const path = stickerFile(stickerId);
+      if (!path) throw new Error(`表情文件不存在：${stickerId}`);
+      const message = [{ type: 'image', data: { file: path } }] as any;
+      if (kind === 'group') await client.sendGroupMessage(target, message);
+      else await client.sendPrivateMessage(target, message);
+      return { ok: true, kind, target, stickerId, sentAt: new Date().toISOString() };
     },
 
     async listGroups() {

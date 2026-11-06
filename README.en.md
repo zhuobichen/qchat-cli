@@ -107,7 +107,9 @@ Plug it into Claude Code / Cursor (MCP over stdio):
 }
 ```
 
-Four tools: `search_messages`, `group_digest`, `list_groups`, and `send_message`.
+Five tools: `search_messages`, `group_digest`, `list_groups`, `send_sticker`, `send_message`.
+
+`send_sticker` accepts an `intent` ("comfort", "speechless", "celebrate") and lets the **Jev decision model** pick from your local sticker library — typed choices with calibrated confidence, never an invented id; it falls back to keyword matching when `JEV_API_KEY` is missing or the call fails.
 
 `send_message` is deliberately hard to abuse:
 - **two-phase confirmation** — the first call only returns a summary plus a `confirmation_token`; nothing is sent until you call again with that token (5-minute TTL, bound to the exact content)

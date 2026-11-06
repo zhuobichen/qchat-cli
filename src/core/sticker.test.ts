@@ -1,0 +1,97 @@
+import { describe, it, expect } from 'vitest';
+import { buildJevBody, parseJevAnswer, chooseWithJev, pickSticker, candidatesFor, type StickerCandidate } from './sticker.js';
+
+const cands: StickerCandidate[] = [
+  { id: 'a'.repeat(64), label: '开心 庆祝 撒花' },
+  { id: 'b'.repeat(64), label: '无语 沉默 摊手' },
+];
+
+describe('buildJevBody', () => {
+  it('把候选做进 criteria，state 带意图', () => {
+    const body: any = buildJevBody('我想庆祝一下', cands);
+    expect(body.model).toBe('jev-latest');
+    expect(body.state).toContain('我想庆祝一下');
+    expect(body.questions.m0.type).toBe('choice');
+    expect(Object.keys(body.questions.m0.criteria)).toEqual(cands.map((c) => c.id));
+    expect(body.questions.m0.criteria[cands[0].id]).toBe(cands[0].label);
+  });
+
+  it('空候选也能构造（不抛）', () => {
+    const body: any = buildJevBody('x', []);
+    expect(body.questions.m0.criteria).toEqual({});
+  });
+});
+
+describe('parseJevAnswer', () => {
+  it('解析合法 choice 与置信度', () => {
+    const out = parseJevAnswer({ answers: { m0: { choice: cands[1].id, confidence: 0.87 } } }, cands);
+    expect(out).toEqual({ id: cands[1].id, confidence: 0.87 });
+  });
+
+  it('choice 不在候选里判无效', () => {
+    expect(parseJevAnswer({ answers: { m0: { choice: 'deadbeef' } } }, cands)).toBeNull();
+  });
+
+  it('缺字段判无效', () => {
+    expect(parseJevAnswer({}, cands)).toBeNull();
+    expect(parseJevAnswer(null, cands)).toBeNull();
+  });
+
+  it('置信度缺失时给 0.5 兜底', () => {
+    const out = parseJevAnswer({ answers: { m0: { choice: cands[0].id } } }, cands);
+    expect(out?.confidence).toBe(0.5);
+  });
+});
+
+describe('chooseWithJev', () => {
+  const okFetch = (choice: string, confidence = 0.9) =>
+    (async () => ({ ok: true, json: async () => ({ answers: { m0: { choice, confidence } } }) } as any)) as unknown as typeof fetch;
+
+  it('成功时返回 Jev 的选择', async () => {
+    const out = await chooseWithJev('庆祝', cands, { apiKey: 'k', fetchImpl: okFetch(cands[0].id) });
+    expect(out).toEqual({ id: cands[0].id, confidence: 0.9 });
+  });
+
+  it('没有 key 时不做请求', async () => {
+    let called = false;
+    const spy = (async () => { called = true; return { ok: true, json: async () => ({}) } as any; }) as unknown as typeof fetch;
+    expect(await chooseWithJev('x', cands, { apiKey: '', fetchImpl: spy })).toBeNull();
+    expect(called).toBe(false);
+  });
+
+  it('接口报错返回 null（交给兜底）', async () => {
+    const bad = (async () => ({ ok: false, status: 500, json: async () => ({}) } as any)) as unknown as typeof fetch;
+    expect(await chooseWithJev('x', cands, { apiKey: 'k', fetchImpl: bad })).toBeNull();
+  });
+
+  it('网络抛错返回 null', async () => {
+    const boom = (async () => { throw new Error('timeout'); }) as unknown as typeof fetch;
+    expect(await chooseWithJev('x', cands, { apiKey: 'k', fetchImpl: boom })).toBeNull();
+  });
+
+  it('空候选直接 null', async () => {
+    expect(await chooseWithJev('x', [], { apiKey: 'k' })).toBeNull();
+  });
+});
+
+describe('pickSticker 回退', () => {
+  it('Jev 失败时回退关键词，source=keyword', async () => {
+    const boom = (async () => { throw new Error('down'); }) as unknown as typeof fetch;
+    // 依赖真实表情库；库里没有匹配时返回 null，也接受
+    const out = await pickSticker('庆祝', { apiKey: 'k', fetchImpl: boom });
+    if (out) expect(out.source).toBe('keyword');
+    else expect(out).toBeNull();
+  });
+});
+
+describe('candidatesFor', () => {
+  it('最多返回 5 个，id 都是 64 位 hash', () => {
+    const list = candidatesFor('表情');
+    expect(list.length).toBeLessThanOrEqual(5);
+    for (const c of list) expect(c.id).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('无关查询可能返回空', () => {
+    expect(Array.isArray(candidatesFor('zzzz不存在的词zzzz'))).toBe(true);
+  });
+});

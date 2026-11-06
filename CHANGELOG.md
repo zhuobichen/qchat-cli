@@ -2,6 +2,22 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.14.0] - 2026-11-06
+
+### Added
+
+- **MCP `send_sticker` 工具**：用 `intent` 让 **Jev（TypeSafe System One）决策模型**从本地表情库（232 张）里挑一张，或直接给 `stickerId`
+  - `src/core/sticker.ts`：候选构造、Jev 请求体、答案校验（choice 必须是候选之一）、关键词兜底（14 个单测）
+  - 两阶段确认与 `send_message` 一致；摘要里带**具体表情 label**，确认时看得出是哪一张
+  - 群发同样默认禁用；发送前过 `safety` 白名单
+  - 没有 `JEV_API_KEY` / 接口失败 → 自动回退关键词，不会卡住
+
+### Verified（真实链路）
+
+- Jev 实测：`完全无语` → 选中「熊猫头 挺好的 嘲讽 无语 敷衍」（conf 0.98，749–1091ms）；`庆祝胜利` → conf 0.86
+- MCP 端到端：第一阶段返回 `待确认：…表情「熊猫头…」（jev，id e907c9d5…）` → 第二阶段返回 `{"ok":true,"stickerId":"e907c9d5…"}`，表情实际送达 1473517806
+- `vitest run src`：16 文件 / **182 用例**
+
 ## [0.13.0] - 2026-11-06
 
 ### Added
