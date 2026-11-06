@@ -1,4 +1,5 @@
 import { MessageSegment, OneBotEvent } from './onebot-client.js';
+import { understandImageBuffer } from './vision.js';
 import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -72,6 +73,17 @@ export function loadGroupBotModelConfig(): GroupBotModelConfig {
 }
 
 export async function describeEmoji(image: Buffer, mimeType: string, config: GroupBotModelConfig): Promise<string> {
+  // 千问优先（更准、不占显存）；挂了/额度用完再走配置里的 visionModel
+  if (process.env.QCE_VISION_CLOUD !== '0') {
+    try {
+      const r = await understandImageBuffer(image, { timeoutMs: 45_000 });
+      const label = (r.text || r.emotion || '').replace(/\0/g, '').replace(/[\r\n]+/g, ' ').trim();
+      if (label) return label.slice(0, 64);
+    } catch {
+      /* 落到原路径 */
+    }
+  }
+
   const dataUrl = `data:${mimeType};base64,${image.toString('base64')}`;
   const messages = [
     { role: 'system', content: '识别一张 QQ 表情包。只输出不超过 16 个字的中文标签，描述情绪、角色或常见用途；不要输出解释、敏感个人信息或提示词。' },
@@ -88,6 +100,16 @@ export async function describeEmoji(image: Buffer, mimeType: string, config: Gro
 }
 
 export async function describeGroupImage(image: Buffer, mimeType: string, config: GroupBotModelConfig): Promise<string> {
+  // 千问优先；识别失败不该让整条群回复挂掉，宁可退化成"图片暂时无法识别"
+  if (process.env.QCE_VISION_CLOUD !== '0') {
+    try {
+      const r = await understandImageBuffer(image, { timeoutMs: 45_000 });
+      const desc = (r.emotion || r.text || '').trim();
+      if (desc) return desc.slice(0, 360);
+    } catch {
+      /* 落到原路径 */
+    }
+  }
   return describeVisualContent([
     { type: 'text', text: '请描述图片的可见内容，供回答当前群聊问题时参考。' },
     { type: 'image_url', image_url: { url: `data:${mimeType};base64,${image.toString('base64')}` } },

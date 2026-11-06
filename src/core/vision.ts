@@ -243,3 +243,74 @@ export async function understandImage(
 
   return { text: '', emotion: '', character: '', source: 'none' };
 }
+
+/** 图片统一转成 PNG base64（Pillow 处理 webp/动图/异常扩展名） */
+export function bufferToPngBase64(buffer: Buffer): string {
+  const py = `
+import base64, io, sys
+from PIL import Image
+im = Image.open(io.BytesIO(sys.stdin.buffer.read()))
+im = im.convert('RGBA') if im.mode in ('P','LA','RGBA') else im.convert('RGB')
+w, h = im.size
+if max(w, h) > 1024:
+    s = 1024 / max(w, h)
+    im = im.resize((int(w*s), int(h*s)))
+buf = io.BytesIO(); im.save(buf, format='PNG')
+sys.stdout.write(base64.b64encode(buf.getvalue()).decode())
+`;
+  const r = spawnSync('python', ['-c', py], {
+    input: buffer,
+    encoding: 'buffer',
+    timeout: 60_000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.status !== 0 || !r.stdout) return '';
+  return r.stdout.toString('utf8').trim();
+}
+
+/**
+ * Buffer 版识图（群聊消息用）。
+ *
+ * 与 understandImage 的区别：那个要文件路径（本地 OCR 要读盘），
+ * 这个直接吃 Buffer —— 群聊消息图是内存里的。
+ * 兜底时把 Buffer 落到临时文件再走 OCR。
+ */
+export async function understandImageBuffer(
+  buffer: Buffer,
+  options: UnderstandOptions & { tmpDir?: string } = {},
+): Promise<ImageUnderstanding> {
+  const b64 = bufferToPngBase64(buffer);
+  if (!b64) return { text: '', emotion: '', character: '', source: 'none' };
+
+  // 1) 千问
+  if (!options.localOnly) {
+    const q = await describeWithQwen(b64, 'image/png', options);
+    if (q && (q.emotion || q.text)) {
+      // 群聊场景只想要「描述」，把文字和情绪拼起来更有信息量
+      const merged = [q.text, q.emotion].filter(Boolean).join(' ').trim();
+      return { ...q, emotion: merged.slice(0, 200), source: 'qwen' };
+    }
+  }
+  if (options.qwenOnly) return { text: '', emotion: '', character: '', source: 'none' };
+
+  // 2) 本地视觉模型（不需要落盘）
+  const vlm = await describeWithLocalVlm(b64, options);
+  if (vlm) return { text: '', emotion: vlm, character: '', source: 'local-vlm' };
+
+  // 3) 本地 OCR（要文件，落临时盘）
+  try {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join: pjoin } = await import('node:path');
+    const dir = mkdtempSync(pjoin(options.tmpDir ?? tmpdir(), 'qce-vision-'));
+    const f = pjoin(dir, 'img.png');
+    writeFileSync(f, Buffer.from(b64, 'base64'));
+    const ocr = ocrLocal(f);
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* 沙箱可能不让删 */ }
+    if (ocr) return { text: ocr, emotion: ocr.slice(0, 200), character: '', source: 'local-ocr' };
+  } catch {
+    /* 落盘失败就放弃这条兜底 */
+  }
+
+  return { text: '', emotion: '', character: '', source: 'none' };
+}

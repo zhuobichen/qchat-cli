@@ -2,6 +2,21 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.25.1] - 2026-11-07
+
+### Changed
+
+- **群聊识图并入统一模块**：`describeEmoji`（表情打标）与 `describeGroupImage`（群里发图）
+  现在都**千问优先**，失败再退回原来的 `config.visionModel`（`qwen2.5-vl-7b-instruct`）
+  - 新增 `understandImageBuffer()` / `bufferToPngBase64()`：直接吃 Buffer（群聊消息图在内存里）
+  - 实测 0.7–1.6 秒/张，`source=qwen` 确认走的是千问
+
+### Notes
+
+- **失败只降级不抛异常**：群聊里识别失败不该让整条回复挂掉，宁可退化成「图片暂时无法识别」
+- 开关 `QCE_VISION_CLOUD=0` 可一键关掉云识图，全走本地（断网/省钱/千问故障时用）
+- 成本提示：群聊每张图约 0.003 元；按该群活跃度估算一天 1–3 毛
+
 ## [0.25.0] - 2026-11-07
 
 ### Added
