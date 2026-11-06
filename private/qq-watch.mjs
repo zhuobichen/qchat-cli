@@ -10,24 +10,36 @@
  *   私聊 或 群里 @我  → 立即投递一条（带最近 6 条上下文）
  *   其他群消息       → 累积，每 digestMin 分钟投一次摘要；无新消息不投
  *
+ * 可靠性（v2）：
+ *   - 状态原子写入 + 崩溃恢复：断电/强杀不会丢水位，重启从上次位置继续
+ *   - 投递失败自动重试（指数退避 + 抖动），超过次数进 DLQ 死信文件，不丢消息
+ *   - 熔断：连续失败过多时暂停投递一段时间，避免打死下游
+ *   - 关机久的消息不会被静默丢弃：水位之前的按"回补"策略重新评估
+ *
  * 用法:
  *   node private/qq-watch.mjs            # 常驻
  *   node private/qq-watch.mjs --once     # 只跑一轮（调试）
  *   node private/qq-watch.mjs --status   # 打印状态后退出
+ *   node private/qq-watch.mjs --replay-dlq  # 重放死信队列
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  loadState, saveStateAtomic, advanceCursor, isNewMessage, summarize, emptyState,
+} from './lib/watch-state.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, 'private', 'qq-watch.config.json');
 const STATE_PATH = join(ROOT, 'private', 'qq-watch.state.json');
 const INBOX = join(ROOT, 'output', 'qq-inbox.jsonl');
 const LOG_PATH = join(ROOT, 'output', 'qq-watch.log');
+const DLQ_PATH = join(ROOT, 'output', 'qq-watch.dlq.jsonl');
 
 const ONCE = process.argv.includes('--once');
 const STATUS = process.argv.includes('--status');
+const REPLAY_DLQ = process.argv.includes('--replay-dlq');
 
 function log(...parts) {
   const line = `[${new Date().toISOString()}] ${parts.join(' ')}`;
@@ -57,25 +69,164 @@ function loadConfig() {
     dshKey: raw.dshKey ?? process.env.DSH_SUPERVISOR_KEY ?? '',
     sessionId: raw.sessionId,
     intervalSec: Math.max(raw.intervalSec ?? 30, 10),
-    maxAgeHours: Math.max(raw.maxAgeHours ?? 6, 1),
     digestMin: Math.max(raw.digestMin ?? 10, 1),
     groups: Array.isArray(raw.groups) ? raw.groups.map(Number) : [],
     includePrivate: raw.includePrivate !== false,
     ignorePeers: Array.isArray(raw.ignorePeers) ? raw.ignorePeers.map(String) : [],
     contextMessages: raw.contextMessages ?? 6,
     maxPerPoll: Math.max(raw.maxPerPoll ?? 40, 1),
+    // —— 可靠性参数 ——
+    // 投递重试
+    deliverAttempts: Math.max(raw.deliverAttempts ?? 3, 1),
+    deliverTimeoutMs: Math.max(raw.deliverTimeoutMs ?? 20000, 1000),
+    deliverBackoffMs: Math.max(raw.deliverBackoffMs ?? 2000, 100),
+    // 熔断
+    breakerThreshold: Math.max(raw.breakerThreshold ?? 5, 1),
+    breakerCooldownMs: Math.max(raw.breakerCooldownMs ?? 60000, 1000),
+    // 停机太久后的回补窗口：超过这个时长就不追旧消息（默认 7 天）
+    catchUpHours: Math.max(raw.catchUpHours ?? 168, 1),
   };
 }
 
 const cfg = loadConfig();
 
-function loadState() {
-  try { return JSON.parse(readFileSync(STATE_PATH, 'utf8')); } catch { return { initialized: false, lastTime: {}, seen: {}, pending: [], lastDigestAt: 0 }; }
+// ————— 状态 —————
+const loaded = loadState(STATE_PATH);
+const state = loaded.state;
+if (loaded.recoveredFrom) {
+  log(`状态文件损坏，已备份到 ${loaded.recoveredFrom}，从零水位重新开始`);
 }
-function saveState(s) {
-  const ids = Object.keys(s.seen);
-  if (ids.length > 5000) for (const id of ids.slice(0, ids.length - 5000)) delete s.seen[id];
-  try { writeFileSync(STATE_PATH, JSON.stringify(s), 'utf8'); } catch {}
+state.stats.restarts += 1;
+state.lastRunAt = Date.now();
+
+if (STATUS) {
+  console.log(JSON.stringify(summarize(state), null, 2));
+  process.exit(0);
+}
+
+if (REPLAY_DLQ) {
+  await replayDlq();
+  process.exit(0);
+}
+
+// ————— 可靠性：重试 / 熔断 / DLQ —————
+let consecutiveFailures = 0;
+let breakerOpenedAt = 0;
+
+function breakerOpen() {
+  return breakerOpenedAt > 0 && Date.now() - breakerOpenedAt < cfg.breakerCooldownMs;
+}
+
+function breakerRecord(ok) {
+  if (ok) {
+    consecutiveFailures = 0;
+    breakerOpenedAt = 0;
+    return;
+  }
+  consecutiveFailures += 1;
+  if (consecutiveFailures >= cfg.breakerThreshold) {
+    breakerOpenedAt = Date.now();
+    log(`熔断打开：连续失败 ${consecutiveFailures} 次，暂停投递 ${Math.round(cfg.breakerCooldownMs / 1000)}s`);
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 指数退避 + 抖动 */
+function backoff(attempt) {
+  const base = cfg.deliverBackoffMs * Math.pow(2, attempt - 1);
+  const capped = Math.min(base, 60000);
+  return Math.max(0, Math.round(capped * (1 + (Math.random() * 0.4 - 0.2))));
+}
+
+/** 带超时与重试地投递；全失败则进 DLQ */
+async function deliver(text, { retries = cfg.deliverAttempts } = {}) {
+  if (breakerOpen()) {
+    const wait = cfg.breakerCooldownMs - (Date.now() - breakerOpenedAt);
+    throw new Error(`熔断中，${Math.ceil(wait / 1000)}s 后再试`);
+  }
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(cfg.dshEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(cfg.dshKey ? { 'x-supervisor-key': cfg.dshKey } : {}) },
+        body: JSON.stringify({ op: 'send', sessionId: cfg.sessionId, text }),
+        signal: AbortSignal.timeout(cfg.deliverTimeoutMs),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(JSON.stringify(json).slice(0, 200));
+      breakerRecord(true);
+      state.stats.delivered += 1;
+      return json;
+    } catch (e) {
+      lastError = e;
+      breakerRecord(false);
+      if (attempt < retries) {
+        const delay = backoff(attempt);
+        log(`投递失败(${attempt}/${retries})，${delay}ms 后重试: ${e.message}`);
+        await sleep(delay);
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** 死信：投递彻底失败的任务落盘，不丢消息 */
+function pushDlq(kind, payload, error) {
+  try {
+    mkdirSync(join(ROOT, 'output'), { recursive: true });
+    const entry = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      kind,
+      payload,
+      error: String(error?.message ?? error),
+      attempts: cfg.deliverAttempts,
+      createdAt: Date.now(),
+      sessionId: cfg.sessionId,
+    };
+    appendFileSync(DLQ_PATH, `${JSON.stringify(entry)}\n`, 'utf8');
+    state.stats.failed += 1;
+    log(`已进入死信队列: ${kind} (${entry.id})`);
+  } catch (e) {
+    log(`写死信失败: ${e.message}`);
+  }
+}
+
+/** 重放死信 */
+async function replayDlq() {
+  if (!existsSync(DLQ_PATH)) {
+    console.log('没有死信');
+    return;
+  }
+  const lines = readFileSync(DLQ_PATH, 'utf8').split('\n').filter((l) => l.trim());
+  const kept = [];
+  let ok = 0;
+  for (const line of lines) {
+    let entry;
+    try { entry = JSON.parse(line); } catch { kept.push(line); continue; }
+    try {
+      const text = entry.kind === 'digest'
+        ? entry.payload?.text
+        : entry.payload?.text;
+      if (!text) { kept.push(line); continue; }
+      // 同步投递（重放时不用异步）
+      const res = await fetch(cfg.dshEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(cfg.dshKey ? { 'x-supervisor-key': cfg.dshKey } : {}) },
+        body: JSON.stringify({ op: 'send', sessionId: entry.sessionId ?? cfg.sessionId, text }),
+        signal: AbortSignal.timeout(cfg.deliverTimeoutMs),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(JSON.stringify(json).slice(0, 120));
+      ok += 1;
+    } catch (e) {
+      log(`重放失败，保留: ${e.message}`);
+      kept.push(line);
+    }
+  }
+  writeFileSync(DLQ_PATH, kept.join('\n') + (kept.length ? '\n' : ''), 'utf8');
+  console.log(`重放完成：成功 ${ok}，保留 ${kept.length}`);
 }
 
 async function api(action, params = {}) {
@@ -90,47 +241,28 @@ async function api(action, params = {}) {
   return json.data;
 }
 
-function flatten(msg) {
-  if (typeof msg === 'string') return msg;
-  if (!Array.isArray(msg)) return String(msg ?? '');
-  return msg.map((s) => {
-    const t = s.type;
-    if (t === 'text') return s.data?.text ?? '';
-    if (t === 'image') return '[图片]';
-    if (t === 'face') return '[表情]';
-    if (t === 'mface') return '[表情包]';
-    if (t === 'at') return `@${s.data?.qq === 'all' ? '全体' : s.data?.qq}`;
-    if (t === 'record') return '[语音]';
-    if (t === 'video') return '[视频]';
-    if (t === 'file') return '[文件]';
-    if (t === 'reply') return '[回复]';
-    if (t === 'json' || t === 'xml') return '[卡片]';
-    if (t === 'forward') return '[合并转发]';
-    return `[${t}]`;
-  }).join('');
-}
-
-const pad = (n) => String(n).padStart(2, '0');
-function fmtTime(ts) {
-  const d = new Date(ts * 1000);
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function flatten(message) {
+  if (typeof message === 'string') return message;
+  if (!Array.isArray(message)) return '';
+  return message.map((s) => {
+    switch (s?.type) {
+      case 'text': return s.data?.text ?? '';
+      case 'image': return '[图片]';
+      case 'face': case 'mface': return '[表情]';
+      case 'record': return '[语音]';
+      case 'video': return '[视频]';
+      case 'file': return '[文件]';
+      case 'at': return `@${s.data?.qq === 'all' ? '全体' : s.data?.qq}`;
+      case 'reply': return '';
+      case 'json': case 'xml': return '[卡片]';
+      default: return `[${s?.type ?? '?'}]`;
+    }
+  }).join('').trim();
 }
 
 function mentionsSelf(msg, selfUin) {
   if (!Array.isArray(msg.message)) return false;
   return msg.message.some((s) => s.type === 'at' && String(s.data?.qq) === String(selfUin));
-}
-
-async function deliver(text) {
-  const res = await fetch(cfg.dshEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(cfg.dshKey ? { 'x-supervisor-key': cfg.dshKey } : {}) },
-    body: JSON.stringify({ op: 'send', sessionId: cfg.sessionId, text }),
-    signal: AbortSignal.timeout(20000),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!json.ok) throw new Error(JSON.stringify(json).slice(0, 200));
-  return json;
 }
 
 function appendInbox(records) {
@@ -141,27 +273,32 @@ function appendInbox(records) {
   } catch (e) { log('写 inbox 失败: ' + e.message); }
 }
 
-const state = loadState();
+let selfUin = 0;
+const fresh = [];
 
-async function collectOnce(selfUin) {
-  const contacts = await api('get_recent_contact', { count: 50 });
-  const fresh = [];
+async function poll() {
+  const contacts = await api('get_friend_list', {});
+  const friendList = Array.isArray(contacts) ? contacts : [];
+  const groupList = (await api('get_group_list', {})) ?? [];
+  const peers = [];
 
-  for (const c of contacts ?? []) {
-    const chatType = Number(c.chatType);
+  for (const c of friendList) {
     const peer = String(c.peerUin ?? '');
     if (!peer || cfg.ignorePeers.includes(peer)) continue;
+    if (!cfg.includePrivate) continue;
+    peers.push({ isGroup: false, peer, peerName: c.peerName ?? peer });
+  }
+  for (const c of groupList) {
+    const peer = String(c.peerUin ?? c.group_id ?? '');
+    if (!peer || cfg.ignorePeers.includes(peer)) continue;
+    if (cfg.groups.length && !cfg.groups.includes(Number(peer))) continue;
+    peers.push({ isGroup: true, peer, peerName: c.group_name ?? peer });
+  }
 
-    const isPrivate = chatType === 1;
-    const isGroup = chatType === 2;
-    if (isPrivate && !cfg.includePrivate) continue;
-    if (isGroup && cfg.groups.length && !cfg.groups.includes(Number(peer))) continue;
-    if (!isPrivate && !isGroup) continue; // 服务号/系统消息等跳过
-
+  for (const { isGroup, peer, peerName } of peers) {
     const key = `${isGroup ? 'g' : 'p'}${peer}`;
-    const lastSeen = Number(state.lastTime[key] ?? 0);
-    const msgTime = Number(c.msgTime ?? 0);
-    if (msgTime <= lastSeen) continue;
+    const cursor = state.cursors[key];
+    const lastSeen = cursor?.lastTime ?? 0;
 
     let msgs = [];
     try {
@@ -175,19 +312,19 @@ async function collectOnce(selfUin) {
       continue;
     }
 
-    // 陈旧消息：watcher 停过一段时间后，水位之前的历史不该被当成"刚发生"
-    // cutoff 必须在取历史之后、循环之前算好——内层要用它过滤
-    const cutoff = Math.floor(Date.now() / 1000) - cfg.maxAgeHours * 3600;
-    const newestTime = msgs.length ? msgs[msgs.length - 1].time : 0;
-    const freshMsgs = msgs.filter((m) => m.time > cutoff);
-    if (freshMsgs.length !== msgs.length) {
-      log(`${key}: 跳过 ${msgs.length - freshMsgs.length} 条陈旧消息（>${cfg.maxAgeHours}h）`);
-    }
+    // 停机很久之后的回补窗口：超过 catchUpHours 的旧消息不追（避免刚开机就倾泻历史）
+    const cutoff = Math.floor(Date.now() / 1000) - cfg.catchUpHours * 3600;
 
-    for (const m of freshMsgs) {
-      if (m.time <= lastSeen) continue;
+    for (const m of msgs) {
       const id = String(m.message_id ?? `${m.time}:${m.message_seq}`);
       if (state.seen[id]) continue;
+      if (!isNewMessage(state, key, m.time, m.message_id)) {
+        // 水位之前：如果是停机期间漏的（在窗口内）也要处理
+        if (m.time < cutoff) continue;
+        if (lastSeen && m.time <= lastSeen) continue;
+      }
+      if (m.time < cutoff) continue;
+
       state.seen[id] = 1;
       if (String(m.sender?.user_id) === String(selfUin)) continue;
 
@@ -195,7 +332,7 @@ async function collectOnce(selfUin) {
         at: new Date().toISOString(),
         kind: isGroup ? 'group' : 'private',
         peer,
-        peerName: `${c.peerName ?? peer}(${peer})`,
+        peerName: `${peerName}(${peer})`,
         time: m.time,
         senderId: m.sender?.user_id,
         sender: m.sender?.card || m.sender?.nickname || String(m.sender?.user_id),
@@ -211,118 +348,113 @@ async function collectOnce(selfUin) {
       if (fresh.length >= cfg.maxPerPoll) break;
     }
 
-    // 水位始终按"看到过的最新时间"推进，否则陈旧消息每轮都会被重新扫一遍
-    if (newestTime) state.lastTime[key] = Math.max(lastSeen, newestTime);
+    // 水位推进到本次看到的最新一条
+    if (msgs.length) {
+      const newest = msgs[msgs.length - 1];
+      advanceCursor(state, key, newest.time, newest.message_id);
+    }
   }
-
-  return fresh;
 }
 
-async function flush(fresh, selfUin) {
-  if (!fresh.length && !(state.pendingUrgent?.length)) return;
-  appendInbox(fresh);
+async function runOnce() {
+  state.stats.polls += 1;
+  try {
+    const login = await api('get_login_info', {});
+    selfUin = Number(login?.user_id ?? 0);
+  } catch (e) {
+    log('取登录信息失败: ' + e.message);
+  }
 
-  const urgentNow = fresh.filter((m) => m.kind === 'private' || m.mentioned);
-  // 重试队列：投递失败的消息留在这里，下一轮继续尝试（DSH 暂时不可用时不会丢）
-  const queue = [...(state.pendingUrgent ?? []), ...urgentNow];
-  const stillPending = [];
-  for (const m of queue) {
-    const ctx = m.context?.length
-      ? '\n最近上下文：\n' + m.context.map((x) => `  ${fmtTime(x.time)} ${x.sender}: ${x.text}`).join('\n')
-      : '';
-    const text = [
-      `【QQ ${m.kind === 'private' ? '私聊' : '群里 @ 你'}】`,
-      `${m.kind === 'private' ? '来自' : '群'}: ${m.peerName}`,
-      `时间: ${fmtTime(m.time)}`,
-      `发送者: ${m.sender}(${m.senderId})`,
-      `内容: ${m.text}`,
-      ctx,
-      '',
-      m.kind === 'private'
-        ? `如需回复: qce send msg ${m.peer} "内容"`
-        : `如需回复: qce send group ${m.peer} "内容"`,
-    ].join('\n');
+  try {
+    await poll();
+  } catch (e) {
+    log('轮询失败: ' + e.message);
+  }
+
+  // 立即投递：私聊或群里 @我
+  const urgent = fresh.filter((m) => m.kind === 'private' || m.mentioned);
+  const rest = fresh.filter((m) => !(m.kind === 'private' || m.mentioned));
+
+  for (const m of urgent) {
+    const lines = [];
+    if (m.kind === 'group') lines.push(`【群 ${m.peerName}】${m.sender} 提及你：`);
+    else lines.push(`【私聊 ${m.sender}】`);
+    lines.push(m.text);
+    if (m.context?.length) {
+      lines.push('（最近上下文）');
+      for (const c of m.context) lines.push(`${c.sender}: ${c.text}`);
+    }
+    const text = lines.join('\n');
+    appendInbox([m]);
     try {
       await deliver(text);
       log(`立即投递: ${m.kind} ${m.peer} ${m.sender}: ${String(m.text).slice(0, 40)}`);
     } catch (e) {
-      log(`投递失败(${m.kind} ${m.peer})，转入重试队列: ${e.message}`);
-      stillPending.push(m);
+      pushDlq('urgent', { text, message: m }, e);
+      log(`立即投递失败(已入死信): ${m.kind} ${m.peer}: ${e.message}`);
     }
   }
-  state.pendingUrgent = stillPending.slice(-50);
-  if (stillPending.length) log(`重试队列积压 ${stillPending.length} 条`);
 
-  const others = fresh.filter((m) => !(m.kind === 'private' || m.mentioned));
-  if (others.length) state.pending.push(...others);
+  // 其余消息：攒进摘要队列
+  if (rest.length) {
+    state.pending.push(...rest);
+    log(`累积 ${rest.length} 条待汇总`);
+  }
 
-  const due = Date.now() - Number(state.lastDigestAt ?? 0) >= cfg.digestMin * 60_000;
-  if (state.pending.length && due) {
-    const batch = state.pending.splice(0, 200);
-    const byPeer = new Map();
+  // 汇总投递（每 digestMin 分钟一次）
+  const due = Date.now() - state.lastDigestAt >= cfg.digestMin * 60_000;
+  if (state.pending.length && (due || ONCE)) {
+    const batch = state.pending.slice(0, 100);
+    const lines = [`【群消息汇总】${batch.length} 条`];
     for (const m of batch) {
-      const arr = byPeer.get(m.peer) ?? [];
-      arr.push(m);
-      byPeer.set(m.peer, arr);
+      const d = new Date(m.time * 1000);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      lines.push(`${hh}:${mm} ${m.peerName} ${m.sender}: ${m.text.slice(0, 80)}`);
     }
-    const lines = [`【QQ 消息汇总】${fmtTime(batch[0].time)} → ${fmtTime(batch[batch.length - 1].time)}，共 ${batch.length} 条（无需逐条回复）`];
-    for (const [peer, arr] of byPeer) {
-      lines.push(`\n群/会话 ${arr[0].peerName}: ${arr.length} 条`);
-      for (const m of arr.slice(-8)) lines.push(`  ${fmtTime(m.time)} ${m.sender}: ${m.text.slice(0, 120)}`);
-    }
-    try { await deliver(lines.join('\n')); state.lastDigestAt = Date.now(); log(`汇总投递 ${batch.length} 条`); }
-    catch (e) { log('汇总投递失败: ' + e.message); state.pending.unshift(...batch); }
-  }
-}
-
-async function main() {
-  if (STATUS) {
-    const s = loadState();
-    console.log(JSON.stringify({
-      intervalSec: cfg.intervalSec,
-      digestMin: cfg.digestMin,
-      tracked: Object.keys(s.lastTime).length,
-      pending: (s.pending ?? []).length,
-      lastDigestAgoMin: s.lastDigestAt ? Math.round((Date.now() - s.lastDigestAt) / 60000) : null,
-    }, null, 2));
-    return;
-  }
-
-  const info = await api('get_login_info');
-  const selfUin = info?.user_id;
-  log(`监视启动：${info?.nickname}(${selfUin}) 每 ${cfg.intervalSec}s 轮询，汇总间隔 ${cfg.digestMin}min`);
-  log(`覆盖：私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.length ? cfg.groups.join(',') : '全部'}`);
-
-  // 首轮只记录基线，不投递历史
-  let baseline = state.initialized !== true;
-  if (baseline) log('首次运行：先建立基线（不投递历史消息）');
-
-  do {
-    let fresh = [];
     try {
-      fresh = await collectOnce(selfUin);
-    } catch (e) {
-      log(`轮询失败: ${e.message}`);
-    }
-
-    if (baseline) {
-      state.initialized = true;
-      baseline = false;
+      await deliver(lines.join('\n'));
+      state.pending = state.pending.slice(batch.length);
       state.lastDigestAt = Date.now();
-      saveState(state);
-      log(`基线建立完成（跳过 ${fresh.length} 条历史）`);
-      if (ONCE) break;
-    } else {
-      await flush(fresh, selfUin);
-      saveState(state);
-      if (ONCE) { log(`本轮新增 ${fresh.length} 条`); break; }
+      log(`汇总投递 ${batch.length} 条`);
+    } catch (e) {
+      pushDlq('digest', { text: lines.join('\n'), count: batch.length }, e);
+      log(`汇总投递失败(已入死信): ${e.message}`);
     }
+  }
 
-    await new Promise((r) => setTimeout(r, cfg.intervalSec * 1000));
-  } while (true);
+  saveStateAtomic(STATE_PATH, state);
+  log(`本轮新增 ${fresh.length} 条`);
+  fresh.length = 0;
 }
 
-main().catch((e) => {
-  log('致命错误: ' + (e?.stack || e?.message || e));
-  process.exit(1);
-});
+// ————— 启动 —————
+log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalSec}s 轮询，汇总间隔 ${cfg.digestMin}min`);
+log(`覆盖：私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.length ? cfg.groups.join(',') : '全部'}`);
+log(`回补窗口 ${cfg.catchUpHours}h，熔断阈值 ${cfg.breakerThreshold}，重试 ${cfg.deliverAttempts} 次`);
+
+if (ONCE) {
+  await runOnce();
+  process.exit(0);
+}
+
+let stopping = false;
+const shutdown = () => {
+  if (stopping) return;
+  stopping = true;
+  log('收到退出信号，保存状态…');
+  saveStateAtomic(STATE_PATH, state);
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+process.on('exit', () => { try { saveStateAtomic(STATE_PATH, state); } catch {} });
+
+while (!stopping) {
+  try {
+    await runOnce();
+  } catch (e) {
+    log('轮询异常: ' + e.message);
+  }
+  await sleep(cfg.intervalSec * 1000);
+}

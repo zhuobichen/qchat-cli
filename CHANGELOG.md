@@ -2,6 +2,32 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.22.0] - 2026-11-06
+
+### Added
+
+- **该发文字还是语音**（`src/core/reply-medium.ts` + `qce reply`）
+  - 硬规则优先：对方发语音→回语音；说「唱个歌/听听你的声音/说句话」→语音；说「别发语音，打字」→文字（优先级最高）
+  - 其余交给 Jev 判（text/voice + 置信度，<0.6 保持文字）
+  - `qce reply <文本> --to <id> [--incoming-voice] [--incoming-text <内容>] [--force-text|--force-voice]`
+  - 实测：四类场景判定全对；语音链路用本地克隆音色端到端送达
+- **可靠性内核**（`src/core/reliability.ts`，23 单测）
+  - `withTimeout` / `withResilience`（指数退避 + ±25% 抖动）/ `CircuitBreaker`（按 key 独立计数、半开探针）/ `DeadLetterQueue`（落盘不丢消息）
+  - `qce dlq` 查看死信、`--replay <id>` 重放、`--clear` 清空
+- **watcher v2：断点续传 + 可靠性**（`private/lib/watch-state.mjs`，13 单测）
+  - 状态**原子写入**（先写 .tmp 再 rename）：断电/强杀不会留下半个 JSON
+  - 状态损坏时自动备份 `.corrupt-<ts>` 并重建，不让 watcher 起不来
+  - 水位按会话存（p<QQ>/g<群号>）+ message id，**重启从上次位置继续**，不重投不漏投
+  - v1 状态自动迁移到 v2（保留水位）
+  - 投递失败自动重试（3 次，指数退避）；超过次数进 `output/qq-watch.dlq.jsonl`，`--replay-dlq` 可重放
+  - 熔断：连续失败 5 次暂停投递 60s
+  - **回补窗口 `catchUpHours`（默认 168h）**：关机再开机，窗口内的漏消息会被追回；超窗的才丢弃
+  - v1 状态字段 `lastTime` → v2 `cursors`
+
+### Fixed
+
+- watcher 崩溃恢复：状态文件损坏时不再整个起不来
+
 ## [0.21.0] - 2026-11-06
 
 ### Added

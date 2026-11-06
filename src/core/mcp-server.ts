@@ -198,7 +198,7 @@ export async function handleMessage(
       return ok(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'qchat-cli', version: '0.21.0' },
+        serverInfo: { name: 'qchat-cli', version: '0.22.0' },
       });
 
     case 'ping':
