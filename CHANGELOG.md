@@ -2,6 +2,30 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.5] - 2026-11-07
+
+### Added
+
+- **`scripts/label-emojis.mjs`：双引擎自动打标**
+  - **有文字** → rapidocr（本地 CPU，~1s/张），OCR 出的台词当标签
+  - **没文字** → Qwen3-VL-8B（本地 GPU，~2s/张），描述表情情绪
+  - 自动分流，一条命令跑完；`--dry` / `--vlm-only` / `--limit`
+
+### Verified
+
+- DeepSeek 153 张：OCR 打标 139 张，视觉补标 14 张，**100% 覆盖**
+- 检索命中：`撒娇` / `开心` / `警告` / `委屈` / `摸头` 全部正确
+
+### Notes
+
+- **两个本地 OCR 别搞混**：
+  - `rapidocr`（PP-OCRv4，CPU，几十 MB）→ 短文本/界面截图，快
+  - `ocr2`（Unlimited-OCR-2，3B，6.9GB 显存）→ 长文档/表格/公式，单页 9.3s
+  - 表情包属于前者，用 ocr2 是杀鸡用牛刀
+- **Qwen3-VL 不认 webp**，喂图前要转 PNG（脚本里用 Pillow 做了）
+- **显存冲突**：TTS(~4GB) + Qwen3-VL(~5GB) > 8GB，二者不能同开；
+  跑视觉打标前先停 TTS，跑完再起
+
 ## [0.24.4] - 2026-11-07
 
 ### Added
