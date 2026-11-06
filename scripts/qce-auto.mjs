@@ -224,6 +224,7 @@ async function loadCore() {
 
 // ————— 主循环 —————
 let selfUin = 0;
+let offlinePolls = 0;
 
 /**
  * 该不该回。
@@ -267,9 +268,11 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
 
   try {
     const c = await loadCore();
+    const size = kind === 'group' ? await groupSize(peer) : 0;
     const gate = await c.gate.gateReply({
       trigger: 'ambient',
       recent: recent.slice(-8).map((m) => `${m.sender}: ${m.text}`),
+      ...(size > 0 ? { groupSize: size } : {}),
     });
     if (gate.decision !== 'reply') {
       return { reply: false, reason: `Jev 说 ${gate.decision}（${gate.source} ${gate.confidence.toFixed(2)}）` };
@@ -284,7 +287,7 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
   }
 }
 
-async function generateReply(kind, peer, text, history) {
+async function generateReply(kind, peer, text, history, abuse = false) {
   const c = await loadCore();
   const modelConfig = c.group.loadGroupBotModelConfig();
   const isGroup = kind === 'group';
@@ -294,6 +297,20 @@ async function generateReply(kind, peer, text, history) {
 
   // 群：注入人格 + 画像；私聊：注入长期记忆
   let extra = '';
+
+  // 被骂了：明确要求还嘴（用户定的策略——贴吧老哥不窝囊）
+  if (abuse) {
+    const NL = String.fromCharCode(10);
+    extra += [
+      '【当前情况】对方刚骂了你（脏话/侮辱）。你的回应要求：',
+      '1. 必须还嘴，不能装没看见、不能礼貌化解、不能说"我是AI不能生气"',
+      '2. 用贴吧老哥那股劲儿怼回去：阴阳、拆台、反问、拿对方的点开涮',
+      '3. 但不要真骂脏话、不要人身攻击对方家人、不要威胁',
+      '4. 一到两句，短促有力，别长篇大论',
+      '',
+      '',
+    ].join(NL);
+  }
   if (isGroup) {
     const persona = c.persona.loadGroupPersona(peer);
     const profile = c.profile.buildProfileBlock(peer);
@@ -417,6 +434,21 @@ async function processMessage(kind, peer, msg, history, self) {
   }
 }
 
+// 群人数缓存：闸门要用它判断"小群里没点名也多半是在对我说"
+const groupSizeCache = new Map();
+async function groupSize(gid) {
+  const key = String(gid);
+  if (groupSizeCache.has(key)) return groupSizeCache.get(key);
+  try {
+    const info = await api('get_group_info', { group_id: Number(gid) });
+    const n = Number(info?.member_count ?? 0);
+    if (n > 0) groupSizeCache.set(key, n);
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 // 好友/群列表缓存：每秒扫一次时不必每秒都拉两遍列表
 let peersCache = null;
 let peersCacheAt = 0;
@@ -450,6 +482,29 @@ async function runOnce() {
     log(`熔断中，跳过本轮`);
     return;
   }
+  // 在线检查：掉线时 get_login_info 仍会返回缓存的账号信息，
+  // 但 get_status.online === false —— 此时所有轮询都是白跑，且没有任何报错。
+  // 必须显式检测，否则表现成"进程活着但什么都不干"。
+  try {
+    const st = await api('get_status', {});
+    const online = st?.online === true;
+    if (!online) {
+      offlinePolls += 1;
+      // 只在第 1 次和之后每 60 次（约 2 分钟）提醒一次，避免刷屏
+      if (offlinePolls === 1 || offlinePolls % 60 === 0) {
+        log(`[掉线] NapCat 报告 online=false（连续 ${offlinePolls} 次）——消息收不到，需要重新登录`);
+      }
+      return;
+    }
+    if (offlinePolls > 0) {
+      log(`[恢复] NapCat 重新在线（掉线 ${offlinePolls} 次轮询）`);
+      offlinePolls = 0;
+    }
+  } catch (e) {
+    log(`取在线状态失败: ${e.message}`);
+    return;
+  }
+
   try {
     const login = await api('get_login_info', {});
     selfUin = Number(login?.user_id ?? 0);

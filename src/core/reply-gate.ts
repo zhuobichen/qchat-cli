@@ -18,6 +18,13 @@ export interface GateContext {
   recent: string[];
   /** 机器人自己最后一条回复的时间距今秒数（可选） */
   sinceLastReplySec?: number;
+  /**
+   * 群人数（仅群聊有意义）。
+   *
+   * 为什么需要：两人群里有人说「你在干嘛」，显然是冲我来的；
+   * 但 Jev 只看文本时给不出这个判断（实测 0.30 把握就跳过了）。
+   */
+  groupSize?: number;
 }
 
 export interface GateResult {
@@ -25,6 +32,8 @@ export interface GateResult {
   confidence: number;
   source: 'jev' | 'rules';
   reason?: string;
+  /** 这条是被骂了——回复时要还嘴，不是正常搭话 */
+  abuse?: boolean;
 }
 
 /**
@@ -48,12 +57,22 @@ export const GATE_CRITERIA: Record<GateDecision, string> = {
     '或者别人在约线下活动/私事、在吵架，我插话只会尴尬',
 };
 
-/** 构造 Jev 请求：一个 state（触发原因 + 最近消息），一个 choice 问题 */
+/** 构造 Jev 请求：一个 state（触发原因 + 群规模 + 最近消息），一个 choice 问题 */
 export function buildGateBody(context: GateContext): Record<string, unknown> {
   const recent = context.recent.slice(-10).map((m, i) => `[#${i}] ${m}`).join('\n');
+
+  // 小群提示：两人群里「你在干嘛」显然是冲我来的，但纯看文本 Jev 给不出这判断
+  //（实测 0.30 把握就跳过了）。所以把群规模作为事实喂进去。
+  const sizeLine =
+    typeof context.groupSize === 'number' && context.groupSize > 0
+      ? context.groupSize <= 3
+        ? `群人数：${context.groupSize}（很小的群，没点名的消息也多半是在对你说话）`
+        : `群人数：${context.groupSize}`
+      : '';
+
   return {
     model: JEV_MODEL,
-    state: `触发原因：${context.trigger}\n最近消息：\n${recent}`,
+    state: [`触发原因：${context.trigger}`, sizeLine, `最近消息：\n${recent}`].filter(Boolean).join('\n'),
     questions: {
       m0: {
         type: 'choice',
@@ -95,6 +114,17 @@ export interface GateOptions {
  * 决策入口：先问 Jev，置信度不够或调用失败就回落到规则。
  */
 export async function gateReply(context: GateContext, options: GateOptions = {}): Promise<GateResult> {
+  // 被骂 → 必回必还嘴。这条**优先于一切**，包括 Jev 和"没点名默认不插话"。
+  //
+  // 理由（用户定的策略）：这是贴吧老哥人设，被骂了不回显得窝囊。
+  // 而且实测 Jev 对被骂只给 0.34 把握，然后回落到规则跳过——
+  // 所以这里必须前置，不能指望 Jev。
+  const lastMsg = context.recent[context.recent.length - 1] ?? '';
+  const body = lastMsg.replace(/^[^:：]*[:：]\s*/, '');   // 去掉 "昵称: " 前缀
+  if (detectAbuse(body, { groupSize: context.groupSize, mentioned: context.trigger === 'mention' })) {
+    return { decision: 'reply', confidence: 1, source: 'rules', reason: '被骂了，必须还嘴', abuse: true };
+  }
+
   const apiKey = options.apiKey ?? process.env.JEV_API_KEY ?? '';
   const minConfidence =
     options.minConfidence ?? Number(process.env.QCE_GATE_MIN_CONFIDENCE ?? 0.55);
@@ -119,4 +149,39 @@ export async function gateReply(context: GateContext, options: GateOptions = {})
   } catch {
     return rulesDecision(context);
   }
+}
+
+/**
+ * 骂人识别：判断这句话是不是在骂我。
+ *
+ * 为什么用关键词而不是 Jev：实测 Jev 对被骂给的把握只有 0.34-0.35，
+ * 然后回落到规则（ambient → skip），于是「被骂必还嘴」这个策略永远不触发。
+ * 关键词是确定性的，正好补上这个洞。
+ *
+ * 为什么还要判「是不是骂我」：真群里脏话满天飞，但多半是骂别人、骂游戏、骂天气。
+ * 只有同时满足「有脏话」+「指向我」才算——小群、@ 我、或用了第二人称"你"。
+ */
+export function detectAbuse(text: string, context: { groupSize?: number; mentioned?: boolean } = {}): boolean {
+  const t = String(text ?? '');
+  if (!t.trim()) return false;
+
+  // 带明确攻击对象的脏话（避免"我操"这种语气词误判）
+  // 只收「明确在骂人」的，不收语气词。
+  //
+  // 特别注意「你妈的」：它常作语气助词用（「你妈的，我手机掉了」），
+  // 不加限定会误判成被骂。只有「去你妈的 / 操你妈」这种才是指向性辱骂。
+  const PATTERNS = [
+    /傻[逼比Bb屄]/, /煞笔/, /沙比/, /智障/, /脑残/, /弱智/, /废物/,
+    /去你妈的/, /操你妈/, /草你妈/, /日你妈/, /干你妈/, /你妈死了/, /死全家/,
+    /滚[蛋吧出]/, /狗东西/, /狗日的/, /杂种/, /贱人/, /畜生/, /去死吧/,
+  ];
+  if (!PATTERNS.some((re) => re.test(t))) return false;
+
+  // 指向判断：必须是冲我来的。
+  //
+  // 只用"小群"当依据会误判——两人群里「这游戏真垃圾」骂的是游戏，不是我（实测踩过）。
+  // 所以要求至少一个明确指向：@我 / 提到机器人 / 第二人称"你"。
+  if (context.mentioned) return true;
+  if (/机器人|朝闻|这bot|the bot/i.test(t)) return true;
+  return /你/.test(t);
 }

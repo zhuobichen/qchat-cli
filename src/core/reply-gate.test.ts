@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildGateBody, parseGateAnswer, rulesDecision, gateReply, GATE_CRITERIA, type GateContext,
-} from './reply-gate.js';
+import { buildGateBody, parseGateAnswer, rulesDecision, gateReply, GATE_CRITERIA, type GateContext, detectAbuse } from './reply-gate.js';
 
 const ctx = (over: Partial<GateContext> = {}): GateContext => ({
   trigger: 'ambient',
@@ -120,5 +118,85 @@ describe('阈值默认值', () => {
     const r = await gateReply({ trigger: 'ambient', recent: ['x'] }, { apiKey: 'k', fetchImpl: fake });
     expect(r.source).toBe('rules');
     if (saved !== undefined) process.env.QCE_GATE_MIN_CONFIDENCE = saved;
+  });
+});
+
+describe('groupSize 小群提示', () => {
+  it('小群时 state 里带"多半是在对你说话"', () => {
+    const body: any = buildGateBody({ trigger: 'ambient', recent: ['Todd: 你在干嘛'], groupSize: 2 });
+    expect(body.state).toContain('很小的群');
+    expect(body.state).toContain('多半是在对你说话');
+  });
+
+  it('大群时只写人数，不加倾向性提示', () => {
+    const body: any = buildGateBody({ trigger: 'ambient', recent: ['x: y'], groupSize: 41 });
+    expect(body.state).toContain('群人数：41');
+    expect(body.state).not.toContain('很小的群');
+  });
+
+  it('不给 groupSize 时不写这一行', () => {
+    const body: any = buildGateBody({ trigger: 'ambient', recent: ['x'] });
+    expect(body.state).not.toContain('群人数');
+  });
+});
+
+describe('detectAbuse 骂人识别', () => {
+  const g = { groupSize: 2 };
+
+  it('明确的第二人称辱骂 → 成立', () => {
+    expect(detectAbuse('你是个傻逼', g)).toBe(true);
+    expect(detectAbuse('我去你妈的', g)).toBe(true);
+    expect(detectAbuse('你个智障', g)).toBe(true);
+    expect(detectAbuse('你个废物', g)).toBe(true);
+    // 「废物东西」没有第二人称指向，按设计不触发（防误判优先）
+    expect(detectAbuse('废物东西', g)).toBe(false);
+  });
+
+  it('语气词不误判（"你妈的"作感叹用）', () => {
+    expect(detectAbuse('你妈的我手机掉了', g)).toBe(false);
+    expect(detectAbuse('我操，心态炸了', g)).toBe(false);
+  });
+
+  it('骂别的东西不算', () => {
+    expect(detectAbuse('这游戏真垃圾', g)).toBe(false);
+    expect(detectAbuse('傻逼游戏', g)).toBe(false);
+    expect(detectAbuse('今天食堂真难吃', g)).toBe(false);
+  });
+
+  it('提到机器人也算指向我', () => {
+    expect(detectAbuse('这机器人真废物', { groupSize: 41 })).toBe(true);
+  });
+
+  it('@ 我时即使没说"你"也算', () => {
+    expect(detectAbuse('傻逼', { mentioned: true })).toBe(true);
+  });
+
+  it('大群里骂别人不算', () => {
+    expect(detectAbuse('你是个傻逼', { groupSize: 41 })).toBe(true); // 有"你"，指向性强
+    expect(detectAbuse('真垃圾', { groupSize: 41 })).toBe(false);
+  });
+
+  it('空输入', () => {
+    expect(detectAbuse('')).toBe(false);
+  });
+});
+
+describe('gateReply 被骂优先', () => {
+  it('被骂时必回，且标记 abuse（优先于一切，包括不配 key）', async () => {
+    const r = await gateReply({ trigger: 'ambient', recent: ['Todd: 你是个傻逼'], groupSize: 2 }, { apiKey: '' });
+    expect(r.decision).toBe('reply');
+    expect(r.abuse).toBe(true);
+    expect(r.source).toBe('rules');
+  });
+
+  it('正常消息不会被标记 abuse', async () => {
+    const fake = (async () => ({ ok: true, json: async () => ({ answers: { m0: { choice: 'skip', confidence: 0.9 } } }) } as any)) as unknown as typeof fetch;
+    const r = await gateReply({ trigger: 'ambient', recent: ['Todd: 在吗'], groupSize: 2 }, { apiKey: 'k', fetchImpl: fake });
+    expect(r.abuse).toBeUndefined();
+  });
+
+  it('从 recent 里去掉昵称前缀再判断', async () => {
+    const r = await gateReply({ trigger: 'ambient', recent: ['冷峰沉睡: 你是个傻逼'], groupSize: 2 }, { apiKey: '' });
+    expect(r.abuse).toBe(true);
   });
 });

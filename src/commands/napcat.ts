@@ -369,7 +369,19 @@ export function napcatCommand(program: Command): void {
       while (Date.now() - startTime < STARTUP_TIMEOUT_MS) {
         const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`, readOnebotToken(napcatDir, uin));
         const infoUin = info?.data?.user_id ? String(info.data.user_id) : '';
-        if (info?.data?.nickname && (!uin || infoUin === uin)) {
+
+        // get_login_info 掉线时仍会返回缓存的账号信息（昵称、uin 都在），
+        // 只靠它判断会误报「登录成功」，让用户以为完事了，实际上没连上。
+        // 必须再问一次 get_status：只有 online === true 才算真登录。
+        let reallyOnline = false;
+        try {
+          const st = await httpGet(`${getNapCatUrl(host, port)}/get_status`, readOnebotToken(napcatDir, uin));
+          reallyOnline = (st as any)?.data?.online === true;
+        } catch {
+          reallyOnline = false;
+        }
+
+        if (reallyOnline && info?.data?.nickname && (!uin || infoUin === uin)) {
           ready = true;
           break;
         }
