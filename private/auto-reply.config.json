@@ -1,8 +1,6 @@
 {
   "http": "http://127.0.0.1:3000",
-  "groups": [
-    1134983058
-  ],
+  "groups": [],
   "includePrivate": true,
   "allow": [
     "1473517806",

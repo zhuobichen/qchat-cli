@@ -3,12 +3,12 @@
   "dshEndpoint": "http://127.0.0.1:3080/dsh-agent-supervisor/command",
   "dshKey": "",
   "sessionId": "session-54488d96-d0ba-4c47-9a23-1e424b9fde4a",
-  "intervalSec": 30,
-  "digestMin": 10,
+  "intervalSec": 1,
   "groups": [],
   "includePrivate": true,
   "contextMessages": 6,
   "ignorePeers": [],
   "maxPerPoll": 40,
-  "token": "75277e324f924d73255a5d0b77543e035af0e509bc7d7559"
+  "token": "75277e324f924d73255a5d0b77543e035af0e509bc7d7559",
+  "deliverAll": true
 }

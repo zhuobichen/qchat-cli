@@ -8,7 +8,7 @@
  *
  * 投递策略（省 token）：
  *   私聊 或 群里 @我  → 立即投递一条（带最近 6 条上下文）
- *   其他群消息       → 累积，每 digestMin 分钟投一次摘要；无新消息不投
+ *   全部消息         → 按 peer 合并后**立即投递**（不做摘要延迟）
  *
  * 可靠性（v2）：
  *   - 状态原子写入 + 崩溃恢复：断电/强杀不会丢水位，重启从上次位置继续
@@ -70,8 +70,7 @@ function loadConfig() {
     dshEndpoint: raw.dshEndpoint ?? 'http://127.0.0.1:3080/dsh-agent-supervisor/command',
     dshKey: raw.dshKey ?? process.env.DSH_SUPERVISOR_KEY ?? '',
     sessionId: raw.sessionId,
-    intervalSec: Math.max(raw.intervalSec ?? 30, 10),
-    digestMin: Math.max(raw.digestMin ?? 10, 1),
+    intervalSec: Math.max(raw.intervalSec ?? 1, 1),
     groups: Array.isArray(raw.groups) ? raw.groups.map(Number) : [],
     includePrivate: raw.includePrivate !== false,
     ignorePeers: Array.isArray(raw.ignorePeers) ? raw.ignorePeers.map(String) : [],
@@ -283,26 +282,52 @@ function appendInbox(records) {
 }
 
 let selfUin = 0;
+let offlinePolls = 0;
+const historyErrors = {};
 const fresh = [];
 
-async function poll() {
+/**
+ * 好友/群列表缓存。
+ *
+ * 为什么要缓存：1 秒轮询时每秒都拉这两个列表纯属浪费——它们几分钟才变一次。
+ * 缓 60 秒，能减少 2/3 的 API 调用。
+ */
+let peerCache = { at: 0, peers: [] };
+const PEER_CACHE_MS = 60_000;
+
+async function listPeers() {
+  const now = Date.now();
+  if (now - peerCache.at < PEER_CACHE_MS && peerCache.peers.length) return peerCache.peers;
+
   const contacts = await api('get_friend_list', {});
   const friendList = Array.isArray(contacts) ? contacts : [];
   const groupList = (await api('get_group_list', {})) ?? [];
   const peers = [];
 
   for (const c of friendList) {
-    const peer = String(c.peerUin ?? '');
+    // 注意：OneBot 的 get_friend_list 返回的是 user_id / nickname，
+    // **不是** peerUin / peerName。早先按 peerUin 读，结果永远拿不到好友，
+    // 表现就是私聊消息一条都收不到（群里正常，所以不容易发现）。
+    const peer = String(c.user_id ?? c.peerUin ?? '');
     if (!peer || cfg.ignorePeers.includes(peer)) continue;
-    if (!cfg.includePrivate) continue;
-    peers.push({ isGroup: false, peer, peerName: c.peerName ?? peer });
+    if (cfg.includePrivate !== true) continue;
+    // 好友列表里会包含机器人自己（用来给自己发消息/设备同步），跳过
+    if (selfUin && peer === String(selfUin)) continue;
+    peers.push({ isGroup: false, peer, peerName: c.remark || c.nickname || c.peerName || peer });
   }
   for (const c of groupList) {
-    const peer = String(c.peerUin ?? c.group_id ?? '');
+    const peer = String(c.group_id ?? c.peerUin ?? '');
     if (!peer || cfg.ignorePeers.includes(peer)) continue;
     if (cfg.groups.length && !cfg.groups.includes(Number(peer))) continue;
     peers.push({ isGroup: true, peer, peerName: c.group_name ?? peer });
   }
+
+  peerCache = { at: now, peers };
+  return peers;
+}
+
+async function poll() {
+  const peers = await listPeers();
 
   for (const { isGroup, peer, peerName } of peers) {
     const key = `${isGroup ? 'g' : 'p'}${peer}`;
@@ -317,9 +342,14 @@ async function poll() {
       });
       msgs = (hist?.messages ?? []).sort((a, b) => a.time - b.time);
     } catch (e) {
-      log(`取 ${key} 历史失败: ${e.message}`);
+      // 同一条错误每秒刷一次会把日志淹掉，只在首次和每 100 次时记
+      historyErrors[key] = (historyErrors[key] ?? 0) + 1;
+      if (historyErrors[key] === 1 || historyErrors[key] % 100 === 0) {
+        log(`取 ${key} 历史失败（第 ${historyErrors[key]} 次）: ${e.message}`);
+      }
       continue;
     }
+    if (historyErrors[key]) delete historyErrors[key];
 
     // 停机很久之后的回补窗口：超过 catchUpHours 的旧消息不追（避免刚开机就倾泻历史）
     const cutoff = Math.floor(Date.now() / 1000) - cfg.catchUpHours * 3600;
@@ -367,6 +397,27 @@ async function poll() {
 
 async function runOnce() {
   state.stats.polls += 1;
+  // 掉线检测：get_login_info 掉线时仍返回缓存信息，只有 get_status.online 会变 false。
+  // 不检测的话，表现就是"进程活着、日志在滚、但一条消息都收不到"。
+  try {
+    const st = await api('get_status', {});
+    if (st?.online !== true) {
+      offlinePolls += 1;
+      if (offlinePolls === 1 || offlinePolls % 60 === 0) {
+        log(`[掉线] NapCat online=false（连续 ${offlinePolls} 轮）——消息收不到，需要重新登录`);
+      }
+      saveStateAtomic(STATE_PATH, state);
+      return;
+    }
+    if (offlinePolls > 0) {
+      log(`[恢复] NapCat 重新在线（掉线 ${offlinePolls} 轮）`);
+      offlinePolls = 0;
+    }
+  } catch (e) {
+    log('取在线状态失败: ' + e.message);
+    return;
+  }
+
   try {
     const login = await api('get_login_info', {});
     selfUin = Number(login?.user_id ?? 0);
@@ -380,57 +431,77 @@ async function runOnce() {
     log('轮询失败: ' + e.message);
   }
 
-  // 立即投递：私聊或群里 @我
-  const urgent = fresh.filter((m) => m.kind === 'private' || m.mentioned);
-  const rest = fresh.filter((m) => !(m.kind === 'private' || m.mentioned));
+  // 全部消息即时投递（按 peer 合并，同一批到达的拼成一条）
+  //
+  // 为什么按 peer 合并而不是逐条发：一分钟来 5 条会变成 5 个独立请求，
+  // 每次都要重新读上下文。合并成一条，一次看全，回复也更连贯。
+  const byPeer = new Map();
+  for (const m of fresh) {
+    const key = `${m.kind}:${m.peer}`;
+    if (!byPeer.has(key)) byPeer.set(key, []);
+    byPeer.get(key).push(m);
+  }
 
-  for (const m of urgent) {
+  for (const [, batch] of byPeer) {
+    const head = batch[0];
     const lines = [];
-    if (m.kind === 'group') lines.push(`【群 ${m.peerName}】${m.sender} 提及你：`);
-    else lines.push(`【私聊 ${m.sender}】`);
-    lines.push(m.text);
-    if (m.context?.length) {
-      lines.push('（最近上下文）');
-      for (const c of m.context) lines.push(`${c.sender}: ${c.text}`);
+
+    if (head.kind === 'private') {
+      lines.push(`【私聊 ${head.sender}】`);
+    } else {
+      const at = batch.some((m) => m.mentioned);
+      const senders = [...new Set(batch.map((m) => m.sender))].join('、');
+      lines.push(`【群 ${head.peerName}】${senders}${at ? ' 提及你' : ''}：`);
     }
-    const text = lines.join('\n');
-    appendInbox([m]);
+
+    if (batch.length === 1) {
+      lines.push(head.text);
+      if (head.context?.length) {
+        lines.push('（最近上下文）');
+        for (const c of head.context) lines.push(`${c.sender}: ${c.text}`);
+      }
+    } else {
+      for (const m of batch) {
+        const t = new Date(m.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+        lines.push(`[${t}] ${m.sender}: ${m.text}`);
+      }
+    }
+
+    lines.push('');
+    lines.push(head.kind === 'private'
+      ? '要回就回，不想回可以 skip。'
+      : (batch.some((m) => m.mentioned)
+        ? '群里有人 @你，判断怎么回。'
+        : '没 @你；要不要接话由你判断，不接就 skip。'));
+
+    const text = lines.join(String.fromCharCode(10));
+    appendInbox(batch);
     try {
       await deliver(text);
-      log(`立即投递: ${m.kind} ${m.peer} ${m.sender}: ${String(m.text).slice(0, 40)}`);
+      log(`即时投递 ${batch.length} 条: ${head.kind} ${head.peer}`);
     } catch (e) {
-      pushDlq('urgent', { text, message: m }, e);
-      log(`立即投递失败(已入死信): ${m.kind} ${m.peer}: ${e.message}`);
+      pushDlq('urgent', { text, message: head }, e);
+      log(`投递失败(已入死信): ${head.kind} ${head.peer}: ${e.message}`);
     }
   }
 
-  // 其余消息：攒进摘要队列
-  if (rest.length) {
-    state.pending.push(...rest);
-    log(`累积 ${rest.length} 条待汇总`);
+  // 全部入待回复队列（要不要回由会话里的我判断）
+  for (const m of fresh) {
+    enqueue({
+      kind: m.kind,
+      peer: m.peer,
+      peerName: m.peerName,
+      sender: m.sender,
+      senderId: m.senderId,
+      text: m.text,
+      mentioned: m.mentioned,
+      time: m.time,
+      context: m.context,
+      replyHint: m.mentioned ? '群里@了你，需要判断怎么回' : '没@你；要不要接话由你判断',
+    });
   }
 
-  // 汇总投递（每 digestMin 分钟一次）
-  const due = Date.now() - state.lastDigestAt >= cfg.digestMin * 60_000;
-  if (state.pending.length && (due || ONCE)) {
-    const batch = state.pending.slice(0, 100);
-    const lines = [`【群消息汇总】${batch.length} 条`];
-    for (const m of batch) {
-      const d = new Date(m.time * 1000);
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      lines.push(`${hh}:${mm} ${m.peerName} ${m.sender}: ${m.text.slice(0, 80)}`);
-    }
-    try {
-      await deliver(lines.join('\n'));
-      state.pending = state.pending.slice(batch.length);
-      state.lastDigestAt = Date.now();
-      log(`汇总投递 ${batch.length} 条`);
-    } catch (e) {
-      pushDlq('digest', { text: lines.join('\n'), count: batch.length }, e);
-      log(`汇总投递失败(已入死信): ${e.message}`);
-    }
-  }
+  // 摘要模式已废弃：现在全部消息即时投递（见上方 byPeer 合并投递）
 
   saveStateAtomic(STATE_PATH, state);
   log(`本轮新增 ${fresh.length} 条`);
@@ -438,7 +509,7 @@ async function runOnce() {
 }
 
 // ————— 启动 —————
-log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalSec}s 轮询，汇总间隔 ${cfg.digestMin}min`);
+log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalSec}s 轮询，全部消息即时投递`);
 log(`覆盖：私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.length ? cfg.groups.join(',') : '全部'}`);
 log(`回补窗口 ${cfg.catchUpHours}h，熔断阈值 ${cfg.breakerThreshold}，重试 ${cfg.deliverAttempts} 次`);
 

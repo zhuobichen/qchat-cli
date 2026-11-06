@@ -1,0 +1,573 @@
+[
+  {
+    "id": "mw51c2h9-uvy61",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "冷峰沉睡",
+      "senderId": 1441816738,
+      "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂",
+      "mentioned": false,
+      "time": 1793973193,
+      "context": [
+        {
+          "time": 1793948676,
+          "sender": "糯米天师",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793948862,
+          "sender": "青春期彪儿不会遇上晟大爹",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793949708,
+          "sender": "青春期彪儿不会遇上晟大爹",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955575,
+          "sender": "冷峰沉睡",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955578,
+          "sender": "冷峰沉睡",
+          "text": "?"
+        },
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793973218445,
+    "attempts": 0
+  },
+  {
+    "id": "mw51zhgd-io8q3",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "卓者如必",
+      "senderId": 1441001315,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793974293,
+      "context": [
+        {
+          "time": 1793948862,
+          "sender": "青春期彪儿不会遇上晟大爹",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793949708,
+          "sender": "青春期彪儿不会遇上晟大爹",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955575,
+          "sender": "冷峰沉睡",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955578,
+          "sender": "冷峰沉睡",
+          "text": "?"
+        },
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        },
+        {
+          "time": 1793973193,
+          "sender": "冷峰沉睡",
+          "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793974310941,
+    "attempts": 0
+  },
+  {
+    "id": "mw521fnk-nh323",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "糯米天师",
+      "senderId": 243876708,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793974372,
+      "context": [
+        {
+          "time": 1793949708,
+          "sender": "青春期彪儿不会遇上晟大爹",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955575,
+          "sender": "冷峰沉睡",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955578,
+          "sender": "冷峰沉睡",
+          "text": "?"
+        },
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        },
+        {
+          "time": 1793973193,
+          "sender": "冷峰沉睡",
+          "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂"
+        },
+        {
+          "time": 1793974293,
+          "sender": "卓者如必",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793974401920,
+    "attempts": 0
+  },
+  {
+    "id": "mw52ge56-eneng",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "冷峰沉睡",
+      "senderId": 1441816738,
+      "text": "@全体 打吗",
+      "mentioned": false,
+      "time": 1793975094,
+      "context": [
+        {
+          "time": 1793955575,
+          "sender": "冷峰沉睡",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793955578,
+          "sender": "冷峰沉睡",
+          "text": "?"
+        },
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        },
+        {
+          "time": 1793973193,
+          "sender": "冷峰沉睡",
+          "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂"
+        },
+        {
+          "time": 1793974293,
+          "sender": "卓者如必",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793974372,
+          "sender": "糯米天师",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793975099802,
+    "attempts": 0
+  },
+  {
+    "id": "mw52h1km-zw9rc",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "阳村纯鹿人",
+      "senderId": 1271851376,
+      "text": "寒在➕班",
+      "mentioned": false,
+      "time": 1793975105,
+      "context": [
+        {
+          "time": 1793955578,
+          "sender": "冷峰沉睡",
+          "text": "?"
+        },
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        },
+        {
+          "time": 1793973193,
+          "sender": "冷峰沉睡",
+          "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂"
+        },
+        {
+          "time": 1793974293,
+          "sender": "卓者如必",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793974372,
+          "sender": "糯米天师",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793975094,
+          "sender": "冷峰沉睡",
+          "text": "@全体 打吗"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793975130166,
+    "attempts": 0
+  },
+  {
+    "id": "mw52icm8-iy70e",
+    "payload": {
+      "kind": "group",
+      "peer": "913807639",
+      "peerName": "12bian-战斗之夜！嘿别戳头毕业🧑‍🎓群(913807639)",
+      "sender": "阳村纯鹿人",
+      "senderId": 1271851376,
+      "text": "@1441816738 像蜘蛛侠不管劫匪害死自己叔叔",
+      "mentioned": false,
+      "time": 1793975181,
+      "context": [
+        {
+          "time": 1793955587,
+          "sender": "冷峰沉睡",
+          "text": "这还是steam吗"
+        },
+        {
+          "time": 1793973193,
+          "sender": "冷峰沉睡",
+          "text": "我操，心态炸了，背景先说一下，我舍友可能比较便秘，所以他屎从来不冲干净，黏一层也不处理，我一般也不管。刚才我手机掉进去，蹭了一层，用纸一擦，黄的😂"
+        },
+        {
+          "time": 1793974293,
+          "sender": "卓者如必",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793974372,
+          "sender": "糯米天师",
+          "text": "[图片]"
+        },
+        {
+          "time": 1793975094,
+          "sender": "冷峰沉睡",
+          "text": "@全体 打吗"
+        },
+        {
+          "time": 1793975105,
+          "sender": "阳村纯鹿人",
+          "text": "寒在➕班"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793975191136,
+    "attempts": 0
+  },
+  {
+    "id": "mw535thz-jcxcg",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "你在干嘛",
+      "mentioned": false,
+      "time": 1793976285,
+      "context": [],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793976286103,
+    "attempts": 0
+  },
+  {
+    "id": "mw54xl4w-17rzl",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "我去你妈的",
+      "mentioned": false,
+      "time": 1793978083,
+      "context": [
+        {
+          "time": 1793976285,
+          "sender": "Todd",
+          "text": "你在干嘛"
+        },
+        {
+          "time": 1793976303,
+          "sender": "朝闻",
+          "text": "在的，刚在整理表情库——本地 387 张都打完标了，还在调自由接话的判据。你这条我差点漏掉：因为没 @ 我，Jev 只给了 0.3 把握就跳过了，正在修。"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793979261248,
+    "attempts": 0
+  },
+  {
+    "id": "mw5506il-dzmgf",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "你是个傻逼",
+      "mentioned": false,
+      "time": 1793979353,
+      "context": [
+        {
+          "time": 1793976285,
+          "sender": "Todd",
+          "text": "你在干嘛"
+        },
+        {
+          "time": 1793976303,
+          "sender": "朝闻",
+          "text": "在的，刚在整理表情库——本地 387 张都打完标了，还在调自由接话的判据。你这条我差点漏掉：因为没 @ 我，Jev 只给了 0.3 把握就跳过了，正在修。"
+        },
+        {
+          "time": 1793978083,
+          "sender": "Todd",
+          "text": "我去你妈的"
+        },
+        {
+          "time": 1793979293,
+          "sender": "朝闻",
+          "text": "我操，一上来就问候我，我这刚扫完码缓过来一口气。行吧，骂得对，谁让我掉线半小时呢。"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793979382269,
+    "attempts": 0
+  },
+  {
+    "id": "mw55ehvm-i4waq",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "你是个傻逼",
+      "mentioned": false,
+      "time": 1793980024,
+      "context": [
+        {
+          "time": 1793976285,
+          "sender": "Todd",
+          "text": "你在干嘛"
+        },
+        {
+          "time": 1793976303,
+          "sender": "朝闻",
+          "text": "在的，刚在整理表情库——本地 387 张都打完标了，还在调自由接话的判据。你这条我差点漏掉：因为没 @ 我，Jev 只给了 0.3 把握就跳过了，正在修。"
+        },
+        {
+          "time": 1793978083,
+          "sender": "Todd",
+          "text": "我去你妈的"
+        },
+        {
+          "time": 1793979293,
+          "sender": "朝闻",
+          "text": "我操，一上来就问候我，我这刚扫完码缓过来一口气。行吧，骂得对，谁让我掉线半小时呢。"
+        },
+        {
+          "time": 1793979353,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793980050178,
+    "attempts": 0
+  },
+  {
+    "id": "mw55ggb6-07hl5",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "你好",
+      "mentioned": false,
+      "time": 1793980128,
+      "context": [
+        {
+          "time": 1793976285,
+          "sender": "Todd",
+          "text": "你在干嘛"
+        },
+        {
+          "time": 1793976303,
+          "sender": "朝闻",
+          "text": "在的，刚在整理表情库——本地 387 张都打完标了，还在调自由接话的判据。你这条我差点漏掉：因为没 @ 我，Jev 只给了 0.3 把握就跳过了，正在修。"
+        },
+        {
+          "time": 1793978083,
+          "sender": "Todd",
+          "text": "我去你妈的"
+        },
+        {
+          "time": 1793979293,
+          "sender": "朝闻",
+          "text": "我操，一上来就问候我，我这刚扫完码缓过来一口气。行吧，骂得对，谁让我掉线半小时呢。"
+        },
+        {
+          "time": 1793979353,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        },
+        {
+          "time": 1793980024,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793980141458,
+    "attempts": 0
+  },
+  {
+    "id": "mw55jplt-td13p",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793980274,
+      "context": [
+        {
+          "time": 1793978083,
+          "sender": "Todd",
+          "text": "我去你妈的"
+        },
+        {
+          "time": 1793979293,
+          "sender": "朝闻",
+          "text": "我操，一上来就问候我，我这刚扫完码缓过来一口气。行吧，骂得对，谁让我掉线半小时呢。"
+        },
+        {
+          "time": 1793979353,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        },
+        {
+          "time": 1793980024,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        },
+        {
+          "time": 1793980128,
+          "sender": "Todd",
+          "text": "你好"
+        },
+        {
+          "time": 1793980263,
+          "sender": "朝闻",
+          "text": "你好啊。刚才那句没回不是我装死——Jev 拿 0.48 把握（阈值 0.55），因为前面两句骂人的话把气氛带偏了，它以为「你好」是来挑衅的。这种判断还是我自己看更准：你就是在打招呼。"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793980293473,
+    "attempts": 0
+  },
+  {
+    "id": "mw55jpmt-adfb3",
+    "payload": {
+      "kind": "group",
+      "peer": "1134983058",
+      "peerName": "Agent测试群(1134983058)",
+      "sender": "Todd",
+      "senderId": 1473517806,
+      "text": "[图片]",
+      "mentioned": false,
+      "time": 1793980282,
+      "context": [
+        {
+          "time": 1793979293,
+          "sender": "朝闻",
+          "text": "我操，一上来就问候我，我这刚扫完码缓过来一口气。行吧，骂得对，谁让我掉线半小时呢。"
+        },
+        {
+          "time": 1793979353,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        },
+        {
+          "time": 1793980024,
+          "sender": "Todd",
+          "text": "你是个傻逼"
+        },
+        {
+          "time": 1793980128,
+          "sender": "Todd",
+          "text": "你好"
+        },
+        {
+          "time": 1793980263,
+          "sender": "朝闻",
+          "text": "你好啊。刚才那句没回不是我装死——Jev 拿 0.48 把握（阈值 0.55），因为前面两句骂人的话把气氛带偏了，它以为「你好」是来挑衅的。这种判断还是我自己看更准：你就是在打招呼。"
+        },
+        {
+          "time": 1793980274,
+          "sender": "Todd",
+          "text": "[图片]"
+        }
+      ],
+      "replyHint": "群里有人在说话（没@你）；要不要接话由你判断，不接就 skip"
+    },
+    "status": "pending",
+    "createdAt": 1793980293509,
+    "attempts": 0
+  }
+]
