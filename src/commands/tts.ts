@@ -29,13 +29,22 @@ export function ttsCommand(program: Command): void {
           console.log(chalk.red('local provider 需要 --endpoint，例如 http://127.0.0.1:9880'));
           return;
         }
-        const buf = await synthesizeLocal(String(text), {
-          endpoint: String(options.endpoint),
-          ...(options.refAudio ? { refAudio: String(options.refAudio) } : {}),
-          ...(options.promptText ? { promptText: String(options.promptText) } : {}),
-        });
+        let buf: Buffer | null = null;
+        try {
+          buf = await synthesizeLocal(String(text), {
+            endpoint: String(options.endpoint),
+            ...(options.refAudio ? { refAudio: String(options.refAudio) } : {}),
+            ...(options.promptText ? { promptText: String(options.promptText) } : {}),
+          });
+        } catch (error) {
+          // 路径写错、合成静音都会走到这里——不要吞成"检查服务是否在跑"
+          console.log(chalk.red(`本地合成失败: ${(error as Error).message}`));
+          return;
+        }
         if (!buf) {
           console.log(chalk.red('本地合成失败：检查服务是否在跑（GPT-SoVITS api_v2 的 /tts）'));
+          console.log(chalk.dim(`  端点: ${options.endpoint}`));
+          console.log(chalk.dim('  参考音频建议传**绝对路径**，相对路径按当前目录解析'));
           return;
         }
         file = saveAudioBuf(buf, options.output);

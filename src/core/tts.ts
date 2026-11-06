@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join as joinPath } from 'node:path';
+import { dirname, join as joinPath, resolve as resolvePath } from 'node:path';
 import { join } from 'node:path';
 import { resolveApiKey } from './embeddings.js';
 
@@ -99,9 +99,29 @@ export async function downloadAudio(
  * 没找到返回空串（调用方退化：直接发原始 wav）。
  */
 export function findFfmpeg(): string {
-  if (process.env.QCE_FFMPEG) return process.env.QCE_FFMPEG;
+  if (process.env.QCE_FFMPEG && existsSync(process.env.QCE_FFMPEG)) return process.env.QCE_FFMPEG;
+
+  // PATH 里优先
   const probe = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' });
   if (probe.status === 0) return 'ffmpeg';
+
+  // PATH 里没有就去常见位置找。
+  // 为什么必须兜住：找不到 ffmpeg 就只能发 wav，而 NapCat 对 wav 支持很差
+  // （实测报"语音转换失败"），表现是语音发不出去但日志只写一行"没找到 ffmpeg"。
+  const candidates = [
+    joinPath(process.cwd(), 'thirdparty', 'ffmpeg', 'ffmpeg.exe'),
+    joinPath(process.cwd(), 'ffmpeg', 'ffmpeg.exe'),
+    joinPath(process.cwd(), '..', 'thirdparty', 'ffmpeg', 'ffmpeg.exe'),
+    'D:\github_project\ZhaoWen_GitHub维护\thirdparty\ffmpeg\ffmpeg.exe',
+    'C:\ffmpeg\bin\ffmpeg.exe',
+  ];
+  for (const c of candidates) {
+    try {
+      if (existsSync(c)) return c;
+    } catch {
+      /* 下一个 */
+    }
+  }
   return '';
 }
 
@@ -162,6 +182,18 @@ export async function synthesizeLocal(
   if (trimmed === '') return null;
   if (!options.endpoint) return null;
 
+  // 参考音频必须是绝对路径。
+  // GPT-SoVITS 是独立进程，它按自己的 cwd 解析相对路径——传相对路径会 500/静音，
+  // 而错误信息只是"检查服务是否在跑"，很容易误判成服务挂了。
+  const refAudio = options.refAudio ? resolvePath(options.refAudio) : '';
+
+  // 参考音频不存在时直接说清楚。
+  // 不检查的话，服务端只会 500，而我们统一报"检查服务是否在跑"——
+  // 实测这个误导性提示让人去重启服务，而真正原因是路径写错。
+  if (refAudio && !existsSync(refAudio)) {
+    throw new Error(`参考音频不存在：${refAudio}（传绝对路径或相对当前目录的路径）`);
+  }
+
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
     const res = await fetchImpl(options.endpoint.replace(/\/$/, '') + '/tts', {
@@ -170,7 +202,7 @@ export async function synthesizeLocal(
       body: JSON.stringify({
         text: trimmed,
         text_lang: options.textLang ?? 'zh',
-        ref_audio_path: options.refAudio ?? '',
+        ref_audio_path: refAudio,
         prompt_text: options.promptText ?? '',
         prompt_lang: options.promptLang ?? 'zh',
       }),
@@ -178,10 +210,46 @@ export async function synthesizeLocal(
     });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    return buf.length > 0 ? buf : null;
-  } catch {
+    if (buf.length === 0) return null;
+
+    // 静音自检：参考音频和 prompt_text 对不上时，GPT-SoVITS 不报错，
+    // 而是返回一段**几乎无声**的 wav（实测峰值 395 / 正常 8000+）。
+    // 不检的话表现是"语音发出去了"，对方听到一片安静，极难排查。
+    const silence = detectSilence(buf);
+    if (silence.silent) {
+      throw new Error(
+        `合成结果是静音（峰值 ${silence.peak}，阈值 ${silence.threshold}）——` +
+        `多半是参考音频与 prompt_text 不匹配，或参考音频路径不对：${refAudio}`,
+      );
+    }
+    return buf;
+  } catch (error) {
+    // 静音是我们主动抛的，要让调用方看见原因；网络错误仍然返回 null
+    if (error instanceof Error && (
+      error.message.includes('合成结果是静音') ||
+      error.message.includes('参考音频不存在')
+    )) throw error;
     return null;
   }
+}
+
+/**
+ * 判断 WAV 是不是静音。
+ * 只看前 3 秒（够判断了），按 int16 小端解析。
+ */
+export function detectSilence(wav: Buffer, threshold = 500): { silent: boolean; peak: number; threshold: number } {
+  // 跳过 44 字节标准 WAV 头；找不到 RIFF 就保守认为"不静音"（别误杀）
+  if (wav.length < 46 || wav.slice(0, 4).toString('ascii') !== 'RIFF') {
+    return { silent: false, peak: -1, threshold };
+  }
+  const start = 44;
+  const maxSamples = Math.min((wav.length - start) / 2, 16000 * 3);
+  let peak = 0;
+  for (let i = 0; i < maxSamples; i += 1) {
+    const v = Math.abs(wav.readInt16LE(start + i * 2));
+    if (v > peak) peak = v;
+  }
+  return { silent: peak < threshold, peak, threshold };
 }
 
 /** 把本地合成结果落盘 */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAudioUrl, synthesize } from './tts.js';
+import { extractAudioUrl, synthesize, detectSilence } from './tts.js';
 
 describe('extractAudioUrl', () => {
   it('标准 output.audio.url', () => {
@@ -96,5 +96,58 @@ describe('synthesizeLocal（本地克隆音色）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qce-tts-'));
     const f = saveAudioBuf(Buffer.from([1, 2]), dir);
     expect(f.endsWith('.wav')).toBe(true);
+  });
+});
+
+describe('detectSilence 静音自检', () => {
+  function makeWav(peak: number, seconds = 1, rate = 16000): Buffer {
+    const n = rate * seconds;
+    const data = Buffer.alloc(n * 2);
+    for (let i = 0; i < n; i += 1) {
+      // 简单的方波，峰值可控
+      data.writeInt16LE(i % 2 === 0 ? peak : -peak, i * 2);
+    }
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0, 'ascii');
+    header.writeUInt32LE(36 + data.length, 4);
+    header.write('WAVE', 8, 'ascii');
+    header.write('fmt ', 12, 'ascii');
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(1, 22);
+    header.writeUInt32LE(rate, 24);
+    header.writeUInt32LE(rate * 2, 28);
+    header.writeUInt16LE(2, 32);
+    header.writeUInt16LE(16, 34);
+    header.write('data', 36, 'ascii');
+    header.writeUInt32LE(data.length, 40);
+    return Buffer.concat([header, data]);
+  }
+
+  it('正常音量的音频不算静音', () => {
+    expect(detectSilence(makeWav(8000)).silent).toBe(false);
+  });
+
+  it('近乎无声的 WAV 判为静音（实测故障时峰值约 395）', () => {
+    const r = detectSilence(makeWav(395));
+    expect(r.silent).toBe(true);
+    expect(r.peak).toBe(395);
+  });
+
+  it('全零判为静音', () => {
+    expect(detectSilence(makeWav(0)).silent).toBe(true);
+  });
+
+  it('阈值可调', () => {
+    expect(detectSilence(makeWav(600), 500).silent).toBe(false);
+    expect(detectSilence(makeWav(600), 700).silent).toBe(true);
+  });
+
+  it('不是 WAV 时不误杀', () => {
+    expect(detectSilence(Buffer.from('not a wav at all')).silent).toBe(false);
+  });
+
+  it('太短的 buffer 不误杀', () => {
+    expect(detectSilence(Buffer.alloc(10)).silent).toBe(false);
   });
 });
