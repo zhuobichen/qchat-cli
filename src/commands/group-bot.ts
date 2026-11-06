@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { authManager } from '../core/auth.js';
 import { generateGroupReply, getMentionedText, loadGroupBotModelConfig, summarizeGroupMemory, type GroupBotModelConfig } from '../core/group-agent.js';
 import { gateReply } from '../core/reply-gate.js';
+import { loadGroupPersona, buildPersonaBlock } from '../core/persona.js';
 import { safetyManager } from '../core/safety.js';
 import { MessageSegment, OneBotEvent } from '../core/onebot-client.js';
 import { GroupContextStore } from '../core/group-context.js';
@@ -181,6 +182,8 @@ export function groupBotCommand(program: Command): void {
           const isCurrentInfoRequest = shouldPrefetchPublicSearch(input);
           const context = contextStore.buildAgentInput(groupId, modelConfig.historyMessages, modelConfig.maxInputChars);
           const skillContext = loadRelevantSkills(modelConfig.skillDirectory, input);
+          const personaText = loadGroupPersona(groupId);
+          const personaBlock = personaText ? buildPersonaBlock(personaText) : '';
           const currentImage = contextStore.findImage(groupId, event.message_id, 1);
           const imageStartedAt = Date.now();
           const imageDescription = currentImage
@@ -199,14 +202,14 @@ export function groupBotCommand(program: Command): void {
             console.log(chalk.dim(`AI 请求：上下文 ${context.length} 字，记忆 ${memory.summary.length} 字，检索 ${liveSearchResult.length} 字，图片 ${imageDescription.length} 字，工具 ${TEXT_AGENT_TOOLS.length} 个，思考模式 ${modelConfig.enableThinking ? '开' : '关'}`));
             reply = await generateGroupReply(
               context, memory.summary, modelConfig, TEXT_AGENT_TOOLS,
-              (name, args) => toolRunner.run(name, args), liveSearchResult, imageDescription, skillContext, isCurrentInfoRequest,
+              (name, args) => toolRunner.run(name, args), liveSearchResult, imageDescription, skillContext, isCurrentInfoRequest, personaBlock,
             );
           } catch (error) {
             if (!(error instanceof Error) || !/abort|timeout/i.test(error.message)) throw error;
             console.log(chalk.yellow('AI 首次请求超时，正在以同一上下文降级重试'));
             console.log(chalk.dim(`AI 重试：上下文 ${context.length} 字，记忆 ${memory.summary.length} 字，检索 ${liveSearchResult.length} 字，图片 ${imageDescription.length} 字，工具 0 个，思考模式 ${modelConfig.enableThinking ? '开' : '关'}`));
             reply = await generateGroupReply(
-              context, memory.summary, modelConfig, [], async () => 'Tool disabled.', liveSearchResult, imageDescription, skillContext, true,
+              context, memory.summary, modelConfig, [], async () => 'Tool disabled.', liveSearchResult, imageDescription, skillContext, true, personaBlock,
             );
           }
           console.log(chalk.dim(`AI 回复耗时 ${Date.now() - replyStartedAt}ms`));

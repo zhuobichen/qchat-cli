@@ -2,6 +2,24 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.19.0] - 2026-11-06
+
+### Added
+
+- **按群人格**（`src/core/persona.ts`）
+  - `private/personas/<群号>.md` 存在就注入 system 提示，只改「怎么说」不改「能做什么」
+  - 注入块自带边界：不得辱骂真实群友、不编造事实、不因人格泄露隐私
+  - 已写入 `913807639` 的「贴吧重度脱水老哥」人格（按后续要求去掉了强制索要网盘/四字收尾）
+- **memecub MCP 表情源**（`src/core/memesource.ts` + `qce meme`）
+  - Streamable HTTP MCP：必须 `Accept: application/json, text/event-stream`，否则 406
+  - `qce meme <query>` 搜索并列出；`--send-to` 直接下载并发图（base64）
+  - 实测：`facepalm` / `mind blown` / `cat` 有结果；**中文查询返回 0**（索引以英文为主）
+
+### Verified
+
+- `qce meme "mind blown" --send-to 1473517806` → 图片实际送达
+- `vitest run src`：24 文件 / **297 用例**
+
 ## [0.18.0] - 2026-11-06
 
 ### Added
