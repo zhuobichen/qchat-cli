@@ -2,6 +2,38 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.35.0] - 2026-11-07
+
+### Added
+
+- **`qce friend`**（`src/commands/friend.ts`）：好友管理
+  `list` / `pending` / `approve` / `reject` / `remark` / `rm` / `oneway` / `policy`。
+  自动通过策略落在 `private/friend-policy.json`（默认只自动通过 1473517806）
+- **`OneBotClient` 扩展**：`call()` 通用动作入口、`getDoubtFriendsAddRequest`、
+  `setDoubtFriendsAddRequest`、`setFriendRemark`、`getUnidirectionalFriendList`
+- **成员档案**（`scripts/member-book.mjs` + `private/member-book.json`）：
+  以 QQ 号为主键、名字作别名，改名后仍能倒查。41 人已建档
+- **`scripts/task.mjs`** 补：任务落盘 + 自投递（今天已在文档里描述，此处补实现说明）
+- **`private/rules.md`**：长期规则，含两个反面案例
+
+### Fixed
+
+- **`qzone user` 完全不可用**：名片接口在 `h5.qzone.qq.com` 上返回 **403**，
+  代码把 HTML 响应误判成 `Session expired`。同路径在 `user.qzone.qq.com` 上正常
+- **`qzone user` 字段名全错**：读的是 `intimacy` / `commonfriends` / `sex`，
+  API 实际返回 `intimacyScore` / `commfrd` / `gender`——所以亲密度和性别一直是空的。
+  同时补上空间名、签名、好友关系、空间是否开通
+- **消息推送不带 QQ 号**：`qq-watch.mjs` 原先只输出显示名，重名/改名会认错人。
+  现在每行带 `名字(QQ号)`
+
+### Notes
+
+- 524 测试 / 34 文件
+- 关于「能否主动加好友」的结论：**OneBot 11 与 NapCat 都没有这个动作**。
+  完整动作表 145 个已核对，`get_friend_list` / `set_friend_add_request` /
+  `set_doubt_friends_add_request` 都在，没有 `add_friend`。
+  底层有 `send_packet` 原始出口，但需要逆向 QQ 协议，且是典型封号行为，未采用
+
 ## [0.34.1] - 2026-11-07
 
 ### Added

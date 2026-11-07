@@ -380,6 +380,7 @@ async function poll() {
         context: msgs.filter((x) => x.time <= m.time).slice(-(cfg.contextMessages + 1), -1).map((x) => ({
           time: x.time,
           sender: x.sender?.card || x.sender?.nickname || String(x.sender?.user_id),
+          senderId: x.sender?.user_id,
           text: flatten(x.message).slice(0, 200),
         })),
       });
@@ -458,12 +459,13 @@ async function runOnce() {
       lines.push(head.text);
       if (head.context?.length) {
         lines.push('（最近上下文）');
-        for (const c of head.context) lines.push(`${c.sender}: ${c.text}`);
+        for (const c of head.context) lines.push(`${c.sender}(${c.senderId ?? '?'}): ${c.text}`);
       }
     } else {
       for (const m of batch) {
         const t = new Date(m.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
-        lines.push(`[${t}] ${m.sender}: ${m.text}`);
+        // 带 QQ 号：显示名会改、会重名，光看名字迟早认错人
+        lines.push(`[${t}] ${m.sender}(${m.senderId ?? '?'}): ${m.text}`);
       }
     }
 

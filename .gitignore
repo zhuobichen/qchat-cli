@@ -63,3 +63,21 @@ private/emoji-candidates/
 
 # 本地密钥（不要提交）
 .env
+
+# 视觉理解的临时目录（understandImageBuffer 每次调用建一个，用完不删）
+qce-vision-*/
+# 抓取/调试残留
+.bili.cookies
+.bs.json
+.chime.json
+.tmp-seg.txt
+jieba.cache
+.qce-real/
+.emoji-import/
+.tmp-pip/
+.tmp-ytdlp/
+.vidwork/
+.report.txt
+.get302.mjs
+.probe-qzone.mjs
+qzone-qrcode.png

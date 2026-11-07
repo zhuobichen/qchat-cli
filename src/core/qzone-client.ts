@@ -29,7 +29,9 @@ const MAX_COMMENTS_LOOP = 100; // 获取评论的最大循环次数，防止无�
 const URLS = {
   // 用户
   userInfo:      BASE_URL + '/proxy/domain/base.qzone.qq.com/cgi-bin/user/cgi_userinfo_get_all',
-  userCard:      H5_BASE + '/proxy/domain/r.qzone.qq.com/cgi-bin/user/cgi_personal_card',
+  // 注意：这个接口在 h5.qzone.qq.com 上直接 403（接口被封，不是 cookie 问题）。
+  // 同样的路径在 user.qzone.qq.com 上能通，所以用 BASE_URL。
+  userCard:      BASE_URL + '/proxy/domain/r.qzone.qq.com/cgi-bin/user/cgi_personal_card',
   userOverview:  BASE_URL + '/proxy/domain/r.qzone.qq.com/cgi-bin/main_page_cgi',
 
   // 说说 (emotion_cgi_msglist_v6 on taotao.qq.com)

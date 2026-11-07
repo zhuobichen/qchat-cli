@@ -582,6 +582,48 @@ export class OneBotClient {
   }
 
   /**
+   * 待处理的好友申请（NapCat 的「可疑好友」列表）。
+   *
+   * 注意：OneBot 11 没有「主动发起好友申请」的接口，NapCat 也没有实现。
+   * 所以这个号只能**批准别人发来的申请**，不能自己去加人。
+   * 想让机器人"加好友"，只能操作 QQ 客户端 UI（另一条路，另说）。
+   */
+  async getDoubtFriendsAddRequest(): Promise<any[]> {
+    return this.request<any[]>('get_doubt_friends_add_request');
+  }
+
+  /**
+   * 处理「可疑好友」申请（批准/忽略）
+   */
+  async setDoubtFriendsAddRequest(flag: string, approve: boolean = true): Promise<void> {
+    return this.request('set_doubt_friends_add_request', { flag, approve });
+  }
+
+  /**
+   * 改好友备注
+   */
+  async setFriendRemark(userId: number, remark: string): Promise<void> {
+    return this.request('set_friend_remark', { user_id: userId, remark });
+  }
+
+  /**
+   * 单向好友（我删了对方，但对方列表里还有我）
+   */
+  async getUnidirectionalFriendList(): Promise<any[]> {
+    return this.request<any[]>('get_unidirectional_friend_list');
+  }
+
+  /**
+   * 调任意 OneBot 动作。
+   *
+   * 为什么留这个口子：NapCat 的动作比 OneBot 11 标准多（guild、doubt_friends 等），
+   * 一个个包方法不现实。加新功能时先用它试，稳定了再收成正式方法。
+   */
+  async call<T = any>(action: string, params: Record<string, any> = {}): Promise<T> {
+    return this.request<T>(action, params);
+  }
+
+  /**
    * 处理好友请求
    */
   async setFriendAddRequest(flag: string, approve: boolean = true, remark: string = ''): Promise<void> {

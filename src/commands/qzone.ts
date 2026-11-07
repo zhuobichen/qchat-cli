@@ -144,14 +144,26 @@ export function qzoneCommand(program: Command): void {
     .argument('<uin>', '目标 QQ 号')
     .action(async (uin: string) => {
       const client = getClient();
-      const card = await client.getUserCard(parseInt(uin));
-      const d = card?.data || card;
+      // 两个接口拼一张完整名片：
+      //   getUserCard 给关系数据（亲密度、共同好友、性别）
+      //   getUserInfo 给空间资料（空间名、签名、地区）
+      // 字段名以实际返回为准——API 用的是 intimacyScore / commfrd / gender，
+      // 不是 intimacy / commonfriends / sex（之前读错了，所以全是空的）。
+      const card = await client.getUserCard(parseInt(uin)).catch(() => null);
+      const info = await client.getUserInfo(parseInt(uin)).catch(() => null);
+      const d = card?.data || card || {};
+      const i = info?.data || info || {};
+      const g = d?.gender ?? d?.sex;
       console.log(chalk.bold(`用户名片 (${uin})`));
-      console.log(`  昵称:    ${d?.nickname || '(未知)'}`);
-      console.log(`  备注:    ${d?.remark || d?.remarkname || '(无)'}`);
-      console.log(`  亲密度:  ${d?.intimacy || '0'}`);
-      console.log(`  共同好友: ${d?.commonfriends || '0'}`);
-      console.log(`  性别:    ${d?.sex === 1 ? '男' : d?.sex === 2 ? '女' : '未知'}`);
+      console.log(`  昵称:    ${i?.nickname || d?.nickname || '(未知)'}`);
+      if (i?.spacename) console.log(`  空间名:  ${String(i.spacename).trim()}`);
+      if (i?.signature) console.log(`  签名:    ${i.signature}`);
+      if (i?.desc) console.log(`  简介:    ${i.desc}`);
+      console.log(`  亲密度:  ${d?.intimacyScore ?? d?.intimacy ?? 0}`);
+      console.log(`  共同好友: ${d?.commfrd ?? d?.commonfriends ?? 0}`);
+      console.log(`  性别:    ${g === 1 ? '男' : g === 2 ? '女' : '未知'}`);
+      if (d?.friendship !== undefined) console.log(`  好友:    ${d.friendship ? '是' : '否'}`);
+      if (d?.qzone !== undefined) console.log(`  空间开通: ${d.qzone ? '是' : '否'}`);
     });
 
   // qce qzone feeds [uin]
