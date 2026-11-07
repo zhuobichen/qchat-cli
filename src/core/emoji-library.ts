@@ -18,7 +18,7 @@ export function searchEmojiLibrary(query: string, limit: number = 5): Array<{ id
   return loadManifest().emojis
     .map((emoji) => ({ emoji, score: terms.reduce((score, term) => score + (emoji.label.toLowerCase().includes(term) ? 2 : 0), 0) }))
     .sort((a, b) => b.score - a.score || b.emoji.importedAt.localeCompare(a.emoji.importedAt))
-    .slice(0, Math.min(Math.max(limit, 1), 5))
+    .slice(0, Math.min(Math.max(limit, 1), 200))
     .map(({ emoji }) => ({ id: emoji.hash, label: emoji.label, animated: emoji.file.endsWith('.gif') }));
 }
 

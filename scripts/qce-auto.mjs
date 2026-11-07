@@ -245,6 +245,7 @@ async function loadCore() {
     reliability: await imp('reliability.js'),
     tts: await imp('tts.js'),
     persona: await imp('persona.js'),
+    humanize: await imp('humanize.js'),
     profile: await imp('profile-store.js'),
     memory: await imp('memory.js'),
     context: await imp('group-context.js'),
@@ -434,6 +435,19 @@ async function processMessage(kind, peer, msg, history, self) {
     state.stats.skipped += 1;
     log('生成结果为空，跳过');
     return;
+  }
+
+  // 去人机味：机械削掉公文腔/总结癖/列表表格。
+  // prompt 里已经写了禁止，但模型经常不听；这里再硬过一遍。
+  // 只在「聊天回复」上做——发文件、写长文档时不能动结构。
+  const c0 = await loadCore();
+  if (c0.humanize && typeof c0.humanize.humanize === 'function') {
+    const before = c0.humanize.aiSmellScore(replyText);
+    const cleaned = c0.humanize.humanize(replyText, { maxChars: 320 });
+    if (cleaned.text !== replyText) {
+      log(`去人机味(${before.score}→${c0.humanize.aiSmellScore(cleaned.text).score}): ${cleaned.changes.join(',')}`);
+      replyText = cleaned.text;
+    }
   }
 
   // 文字还是语音

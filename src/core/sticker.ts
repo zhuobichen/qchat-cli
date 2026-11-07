@@ -11,6 +11,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { searchEmojiLibrary, emojiPath } from './emoji-library.js';
+import { cosine, decodeVector, embedTexts, resolveApiKey as resolveEmbeddingApiKey } from './embeddings.js';
+import { feedbackMultiplier, recordStickerSent, statsBySticker } from './sticker-feedback.js';
 import { searchMemes } from './memesource.js';
 
 export const JEV_ENDPOINT = 'https://api.302ai.cn/typesafeai/v1/systemone';
@@ -136,6 +138,8 @@ export function parseJevAnswer(payload: unknown, candidates: StickerCandidate[])
 }
 
 export interface PickOptions {
+  /** 发给谁（group:<id> / private:<uin>），反馈统计用 */
+  scope?: string;
   apiKey?: string;
   endpoint?: string;
   timeoutMs?: number;
@@ -249,7 +253,17 @@ export async function pickStickerMerged(
   intent: string,
   options: PickOptions & { remoteLimit?: number; allowRemote?: boolean } = {},
 ): Promise<MergedPick | null> {
-  const locals: MergedCandidate[] = candidatesFor(intent).map((c) => ({ ...c, origin: 'local' }));
+  // 优先语义检索（向量），拿不到再退回 bigram 子串。
+  // 语义检索取 top-20 而不是 top-1：后面要抽样，候选太少就没有变化空间。
+  let locals: MergedCandidate[] = [];
+  const vecHits = await candidatesByEmbedding(intent, 20, {
+    ...(options.apiKey ? { apiKey: String(options.apiKey) } : {}),
+  }).catch(() => []);
+  if (vecHits.length > 0) {
+    locals = vecHits.map((c) => ({ ...c, origin: 'local' as const }));
+  } else {
+    locals = candidatesFor(intent, 12).map((c) => ({ ...c, origin: 'local' as const }));
+  }
 
   let remotes: MergedCandidate[] = [];
   if (options.allowRemote !== false) {
@@ -273,14 +287,132 @@ export async function pickStickerMerged(
   const usage = loadStickerUsage();
   all = avoidRecentlyUsed(all, usage);
 
-  const jev = await chooseWithJev(intent, all, options);
+  // 关键：交给 Jev 的菜单是**抽样**出来的，不是排序前几名。
+  // 排序是确定性的，直接给前 6 名会让同一意图每次都出同一张；
+  // 抽样后 Jev 每次看到的菜单都不同，它仍然负责"哪个最贴合"，但不负责"总选同一个"。
+  const menuCount = Math.min(6, all.length);
+  // 历史表现做温和加权：发出去有人接的图更容易被选中，没人理的稍微靠后。
+  // 幅度只有 ±15%，不能盖过「贴不贴合」这个主判据。
+  const stats = statsBySticker();
+  const menu = all.length > menuCount
+    ? weightedSample(all, menuCount, 1.2, Math.random, (c) => feedbackMultiplier(stats.get(c.id)))
+    : all;
+  const jev = await chooseWithJev(intent, menu, options);
   if (jev) {
-    const hit = all.find((c) => c.id === jev.id)!;
+    const hit = menu.find((c) => c.id === jev.id) ?? all[0];
     markStickerUsed(hit.id);
+    recordStickerSent(hit.id, intent, options.scope ?? 'unknown');
     return { ...hit, source: 'jev', confidence: jev.confidence };
   }
-  markStickerUsed(all[0].id);
-  return { ...all[0], source: 'keyword' };
+  const pickOne = menu[Math.floor(Math.random() * menu.length)] ?? all[0];
+  markStickerUsed(pickOne.id);
+  recordStickerSent(pickOne.id, intent, options.scope ?? 'unknown');
+  return { ...pickOne, source: 'keyword' };
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// 语义检索 + 带权抽样：解决「同一个词永远发同一张」
+// ══════════════════════════════════════════════════════════════
+
+export interface EmojiVectorIndex {
+  model: string;
+  count: number;
+  dims: number;
+  items: Array<{ hash: string; v: string }>;
+}
+
+let cachedIndex: EmojiVectorIndex | null = null;
+
+export function loadEmojiVectorIndex(path = 'private/emoji-library/embeddings.json'): EmojiVectorIndex | null {
+  if (cachedIndex && path === 'private/emoji-library/embeddings.json') return cachedIndex;
+  try {
+    if (!existsSync(path)) return null;
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as EmojiVectorIndex;
+    if (!Array.isArray(raw.items) || raw.items.length === 0) return null;
+    if (path === 'private/emoji-library/embeddings.json') cachedIndex = raw;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 按语义检索候选。
+ *
+ * 为什么不用 bigram 子串：意图「无语」的合适表情可能是「熊猫头 翻白眼」，
+ * 字面上不含「无语」二字，子串匹配永远够不着。
+ */
+export async function candidatesByEmbedding(
+  intent: string,
+  limit = 20,
+  options: { apiKey?: string; index?: EmojiVectorIndex | null } = {},
+): Promise<StickerCandidate[]> {
+  const index = options.index ?? loadEmojiVectorIndex();
+  if (!index) return [];
+  const apiKey = options.apiKey ?? resolveEmbeddingApiKey();
+  if (!apiKey) return [];
+  try {
+    const [qv] = await embedTexts([intent], { apiKey });
+    if (!qv) return [];
+    const byHash = new Map(emojiLabels().map((e) => [e.hash, e.label]));
+    return index.items
+      .map((it) => ({ hash: it.hash, score: cosine(qv, decodeVector(it.v)) }))
+      .filter((x) => byHash.has(x.hash))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((x) => ({ id: x.hash, label: byHash.get(x.hash)! }));
+  } catch {
+    return [];
+  }
+}
+
+/** 库里的 hash → label（用来把向量索引映射回可发的表情） */
+function emojiLabels(): Array<{ hash: string; label: string }> {
+  try {
+    const raw = JSON.parse(readFileSync('private/emoji-library/manifest.json', 'utf8'));
+    return (raw.emojis ?? []).map((e: any) => ({ hash: e.hash, label: e.label }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 带权抽样（不放回）。
+ *
+ * 为什么要抽样而不是取 top-1：语义检索是确定性的，同一个意图每次排序一样，
+ * 取第一名就会「每次都发同一张」。真人不是这样——同一个意思换着图发。
+ *
+ * 权重 = exp(相似度 / T)。T 越大越随机，越小越保守。
+ * 这里没有显式的相似度，就用名次衰减近似：第 i 名权重 ∝ 1/(i+1)^p。
+ */
+export function weightedSample<T>(
+  items: T[],
+  count: number,
+  power = 1.2,
+  rng = Math.random,
+  weightOf?: (item: T, index: number) => number,
+): T[] {
+  const pool = items.map((item, i) => ({
+    item,
+    w: (1 / Math.pow(i + 1, power)) * (weightOf ? Math.max(0.05, weightOf(item, i)) : 1),
+  }));
+  const out: T[] = [];
+  const n = Math.min(count, pool.length);
+  for (let k = 0; k < n; k += 1) {
+    const total = pool.reduce((s, x) => s + x.w, 0);
+    if (total <= 0) break;
+    let r = rng() * total;
+    let idx = 0;
+    for (; idx < pool.length; idx += 1) {
+      r -= pool[idx].w;
+      if (r <= 0) break;
+    }
+    if (idx >= pool.length) idx = pool.length - 1;
+    out.push(pool[idx].item);
+    pool.splice(idx, 1);
+  }
+  return out;
 }
 
 // ══════════════════════════════════════════════════════════════

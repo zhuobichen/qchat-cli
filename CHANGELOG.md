@@ -2,6 +2,49 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.34.0] - 2026-11-07
+
+### Added
+
+- **`humanize()` 去人机味**（`src/core/humanize.ts`）：机械削掉 AI 腔，
+  包括句首连接词、结尾总结段、客服腔、markdown 列表/表格/标题/粗体。
+  在 `qce-auto` 发送前硬过一遍——prompt 管"想说什么"，过滤器管"别怎么说"
+- **梗库时效**（`knowledge.ts`）：`freshness()` 半衰期 180 天，
+  `isUsable()` 阈值 0.45。过时的梗**能听懂但别用**，分三档措辞注入 prompt
+- **`ageUnknown`**：数据集词条没有逐条年代时明确标"不知道"，
+  而不是编一个假日期算时效
+- **`touchTermSeen()`**：群聊里真有人用某个梗 → 刷新 `lastSeenAt` → 回春。
+  这是唯一可信的"还活着"证据
+- **梗库更新链**：`refresh-memes.mjs`（热榜→jieba 分词→AI 判定→入库）、
+  `meme-refresher.mjs`（常驻，6 小时一轮，detached 关掉 DSH 也活）、
+  `import-chime.mjs`（CHIME 数据集 1282 条，跳过脏话/冒犯 176 条）
+- **`task.mjs`**：长任务落盘 + **自投递**。任务进程自己发 QQ，
+  不依赖 agent 在场；detached 启动，DSH 关了也继续
+- **`onebot-ready.mjs`**：判定 OneBot 是否真能用，必须有 `online === true`
+- **`qce video`**：下载（或本地文件）→ 抽帧拼图 → 调 AudioTranscriber 转写
+- **`qce song`**：搜 B 站（需 buvid3 cookie）→ 下载 → demucs 分人声 →
+  Seed-VC 换音色，全自动
+
+### Fixed
+
+- **`searchEmojiLibrary` 把候选卡死在 5 个**（`Math.min(limit, 5)`），
+  Jev 永远只能从 5 张里挑，难怪单调
+- **表情重复**：加使用记录 + 6 小时冷却；语义检索取 top-20 后**带权抽样 6 个**
+  再交给 Jev——排序是确定性的，不抽样就会"同一个词永远同一张"
+- **表情库只有一半**：档案 768 张只导入了 388 张；补齐后 1105，去重到 959
+- **Seed-VC 长音频 CUDA OOM**：不是显存不够，是 bigvgan 的正弦激活对
+  序列长度敏感——20 秒段撑爆，10 秒段正常。改 10 秒分段
+- **torchaudio 2.11 保存要 torchcodec**（DLL 在 Windows 加载失败）：
+  写 `run_infer.py` 用 soundfile 替换
+- **pip 静默卡死**：缓存/TEMP 在 `%LOCALAPPDATA%`，低完整性进程写不进去，
+  pip 不报错只是不动。改 `--no-cache-dir` + 项目内 TEMP
+
+### Notes
+
+- 完整度：476 测试 / 33 文件
+- 今天踩的坑有一半是同一个根因：**低完整性进程在很多地方静默失败**
+  （pip、Doubao 启动、HF 缓存、桌面写入）。遇到"命令不动但没报错"，先怀疑这个
+
 ## [0.33.0] - 2026-11-07
 
 ### Fixed
