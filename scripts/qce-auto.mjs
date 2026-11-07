@@ -246,6 +246,7 @@ async function loadCore() {
     tts: await imp('tts.js'),
     persona: await imp('persona.js'),
     humanize: await imp('humanize.js'),
+    owner: await imp('owner.js'),
     profile: await imp('profile-store.js'),
     memory: await imp('memory.js'),
     context: await imp('group-context.js'),
