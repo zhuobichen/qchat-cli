@@ -247,6 +247,8 @@ async function loadCore() {
     persona: await imp('persona.js'),
     humanize: await imp('humanize.js'),
     owner: await imp('owner.js'),
+    affinity: await imp('affinity.js'),
+    segments: await imp('segments.js'),
     profile: await imp('profile-store.js'),
     memory: await imp('memory.js'),
     context: await imp('group-context.js'),
@@ -344,7 +346,7 @@ async function shouldReply(kind, peer, mentioned, time, recent = []) {
   }
 }
 
-async function generateReply(kind, peer, text, history, abuse = false) {
+async function generateReply(kind, peer, text, history, abuse = false, senderId = '') {
   const c = await loadCore();
   const modelConfig = c.group.loadGroupBotModelConfig();
   const isGroup = kind === 'group';
@@ -368,6 +370,19 @@ async function generateReply(kind, peer, text, history, abuse = false) {
       '',
     ].join(NL);
   }
+  // 关系画像：这个人跟我熟不熟，决定该用什么语气。
+  // 比"群画像"更细——群画像说的是这个群的风气，这个说的是我跟眼前这个人的关系。
+  if (senderId && c.affinity) {
+    try {
+      const aff = c.affinity.loadAffinity();
+      const rec = aff.users[String(senderId)] ?? null;
+      const relText = c.affinity.renderProfileForPrompt(rec);
+      if (relText) extra += '【你和他】\n' + relText + '\n\n';
+    } catch {
+      /* 画像读不到不影响回复 */
+    }
+  }
+
   if (isGroup) {
     const personaResolved = c.persona.resolvePersona(peer);
     const persona = personaResolved.text;
@@ -412,6 +427,28 @@ async function processMessage(kind, peer, msg, history, self) {
   const voice = hasVoice(msg);
   const sticker = hasSticker(msg);
 
+  // ── 好感度埋点（一）：他跟我说了一句话 ──
+  // 不管回不回都要记——"他主动找我但我不接"本身也是信息。
+  if (meta.senderId) {
+    try {
+      const ca = await loadCore();
+      if (ca.affinity) {
+        const aff = ca.affinity.loadAffinity();
+        const topics = ca.affinity.extractTopics(text);
+        const r = ca.affinity.applyInteraction(aff, meta.senderId, 'from', { name: msg.sender?.card || msg.sender?.nickname });
+        ca.affinity.recordTopics(r.record, topics);
+        // 被骂单独记一笔（不是负分，是"在玩"的信号）
+        if (/傻逼|垃圾|妈的|滚|废物|智障|nmsl|操你/i.test(text)) {
+          ca.affinity.applyInteraction(aff, meta.senderId, 'snub');
+        }
+        ca.affinity.saveAffinity(aff);
+        if (r.changed) log(`  关系变化: ${meta.senderId} ${r.before} → ${r.after}`);
+      }
+    } catch {
+      /* 画像记不下来不影响回复 */
+    }
+  }
+
   const decision = await shouldReply(kind, peer, meta.mentioned, meta.time, history);
   if (!decision.reply) {
     state.stats.skipped += 1;
@@ -425,7 +462,7 @@ async function processMessage(kind, peer, msg, history, self) {
   // 生成回复（带超时/重试）
   let replyText = '';
   try {
-    replyText = await generateReply(kind, peer, text, history);
+    replyText = await generateReply(kind, peer, text, history, false, meta.senderId);
   } catch (e) {
     breakerRecord(false);
     pushDlq('generate', { kind, peer, text, history }, e);
@@ -500,15 +537,42 @@ async function processMessage(kind, peer, msg, history, self) {
     }
   }
 
+  // 分段：真人说话是「一句，停一下，又一句」。
+  // 只对纯文字回复分段——表情/语音/多段消息（文字+图）都不拆，
+  // 拆了会变成"文字、图、文字"这种断头节奏。
+  //
+  // 判断链：pureText → 适合拆（无代码/链接/列表）→ 拆 → 逐条发。
+  let payloads = [message];
+  const isPureText =
+    Array.isArray(message) &&
+    message.length === 1 &&
+    message[0]?.type === 'text' &&
+    typeof message[0]?.data?.text === 'string';
+  if (isPureText && c.segments && typeof c.segments.segmentReply === 'function') {
+    const seg = c.segments.segmentReply(message[0].data.text, { maxSegments: 3 });
+    if (seg.segments.length > 1 && seg.segments.every((x) => x.text.trim())) {
+      payloads = seg.segments.map((x) => ({ segments: [{ type: 'text', data: { text: x.text } }], delay: x.delayAfterMs }));
+      log(`  分段: ${seg.segments.length} 条（${seg.segments.map((x) => x.text.length).join('/')} 字）`);
+    }
+  }
+
   // 发送（带重试）
   let sent = false;
   for (let attempt = 1; attempt <= 3 && !sent; attempt += 1) {
     try {
-      await api(kind === 'group' ? 'send_group_msg' : 'send_private_msg',
-        kind === 'group'
-          ? { group_id: Number(peer), message }
-          : { user_id: Number(peer), message },
-        25000);
+      for (let pi = 0; pi < payloads.length; pi += 1) {
+        const p = payloads[pi];
+        const body = Array.isArray(p) ? p : p.segments;
+        await api(kind === 'group' ? 'send_group_msg' : 'send_private_msg',
+          kind === 'group'
+            ? { group_id: Number(peer), message: body }
+            : { user_id: Number(peer), message: body },
+          25000);
+        // 段间停顿：模拟打完一句想下一句的时间
+        if (!Array.isArray(p) && p.delay > 0 && pi < payloads.length - 1) {
+          await new Promise((r) => setTimeout(r, p.delay));
+        }
+      }
       sent = true;
       breakerRecord(true);
       state.stats.replied += 1;
@@ -518,6 +582,20 @@ async function processMessage(kind, peer, msg, history, self) {
       rt.push(Math.floor(Date.now() / 1000));
       state.replyTimes[key] = rt;
       log(`已回复 ${key}（${medium.medium}）`);
+
+      // ── 好感度埋点（二）：我回了他一句 ──
+      if (meta.senderId) {
+        try {
+          const ca = await loadCore();
+          if (ca.affinity) {
+            const aff = ca.affinity.loadAffinity();
+            ca.affinity.applyInteraction(aff, meta.senderId, 'to');
+            ca.affinity.saveAffinity(aff);
+          }
+        } catch {
+          /* 记不下来不影响流程 */
+        }
+      }
 
       // 补一张表情：文字说完，配个图更像人在聊天
       //
