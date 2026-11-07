@@ -70,6 +70,9 @@ function loadConfig() {
     requireMentionInGroup: raw.requireMentionInGroup !== false,
     freeChat: raw.freeChat === true,
     freeChatProbability: Math.min(Math.max(raw.freeChatProbability ?? 0.35, 0), 1),
+    // 偷表情包：看到别人发的表情就存进库。每群每天上限默认 8 张
+    stealStickers: raw.stealStickers !== false,
+    stealDailyLimit: Math.max(raw.stealDailyLimit ?? 8, 0),
     maxRepliesPerHour: Math.max(raw.maxRepliesPerHour ?? 8, 1),
     emojiChance: Math.min(Math.max(raw.emojiChance ?? 0.3, 0), 1),
     allowVoice: raw.allowVoice !== false,
@@ -249,6 +252,7 @@ async function loadCore() {
     owner: await imp('owner.js'),
     affinity: await imp('affinity.js'),
     segments: await imp('segments.js'),
+    steal: await imp('sticker-steal.js'),
     profile: await imp('profile-store.js'),
     memory: await imp('memory.js'),
     context: await imp('group-context.js'),
@@ -419,8 +423,84 @@ async function makeVoice(text) {
   return c.tts.saveAudioBuf(buf, cfg.outputDir);
 }
 
-async function processMessage(kind, peer, msg, history, self) {
-  const meta = { kind, peer, mentioned: mentionsSelf(msg, self), time: msg.time, senderId: msg.sender?.user_id };
+/**
+ * 偷表情包：别人发的图，看着像就存进自己的库。
+ *
+ * 三道闸：
+ *   ① 只有图片段才看（文字/语音/文件不管）
+ *   ② judgeStealable 挡掉截图、照片、长图、二维码
+ *   ③ 每个群每天最多收 N 张（默认 8），防止库里塞满垃圾
+ */
+async function tryStealSticker(msg, kind, peer) {
+  if (!cfg.stealStickers) return;
+  if (!Array.isArray(msg.message)) return;
+  const imgs = msg.message.filter((s) => s.type === 'image');
+  if (imgs.length === 0) return;
+
+  const c = await loadCore();
+  if (!c.steal) return;
+
+  const scope = `${kind === 'group' ? 'g' : 'p'}${peer}`;
+  const quota = c.steal.loadQuota();
+  const left = c.steal.remainingQuota(scope, cfg.stealDailyLimit, quota);
+  if (left <= 0) return;
+
+  for (const seg of imgs.slice(0, 2)) {
+    const d = seg.data ?? {};
+    // 表情包的 summary 是 [xxx]；普通图片没有。都尝试，让 judgeStealable 决定
+    let buf = null;
+    try {
+      const url = d.url || d.file_url;
+      if (url && /^https?:/.test(String(url))) {
+        const res = await fetch(String(url), { signal: AbortSignal.timeout(15000) });
+        if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+      }
+      if (!buf && d.file) {
+        const got = await api('get_image', { file: String(d.file) }, 15000);
+        const p = got?.data?.file || got?.file;
+        if (p && existsSync(String(p))) buf = readFileSync(String(p));
+      }
+    } catch {
+      continue;
+    }
+    if (!buf || buf.length === 0) continue;
+
+    // 有没有"表情包特征"决定用不用严格模式：
+    //   sub_type=1 或 summary 是 [xxx] → 是表情，放宽
+    //   否则 → 很可能是照片/截图，收紧
+    const likelySticker =
+      String(d.sub_type) === '1' || /^\[.+\]$/.test(String(d.summary ?? ''));
+    const size = c.steal.probeImageSize(buf);
+    const verdict = c.steal.judgeStealable({ buffer: buf, ...size, strict: !likelySticker });
+    if (!verdict.accept) {
+      log(`  图不收: ${verdict.reason}${likelySticker ? '（表情特征）' : '（无表情特征）'}`);
+      continue;
+    }
+
+    const textLen = msg.message
+      .filter((s) => s.type === 'text')
+      .map((s) => String(s.data?.text ?? ''))
+      .join('').trim().length;
+    // 带一大堆字的图更可能是截图，不收
+    if (textLen > 20) continue;
+
+    const fromName = msg.sender?.card || msg.sender?.nickname || '';
+    const r = c.steal.addStolenSticker('private/emoji-library', {
+      buffer: buf,
+      fromUin: String(msg.sender?.user_id ?? ''),
+      fromName,
+      scope,
+      text: flatten(msg.message),
+    });
+    if (r.added) {
+      c.steal.consumeQuota(scope, quota);
+      c.steal.saveQuota(quota);
+      log(`  偷到表情: ${r.label}（${verdict.reason}，来自 ${fromName || '未知'}）`);
+    }
+  }
+}
+
+async function processMessage(kind, peer, msg, history, self) {  const meta = { kind, peer, mentioned: mentionsSelf(msg, self), time: msg.time, senderId: msg.sender?.user_id };
   const key = `${kind === 'group' ? 'g' : 'p'}${peer}`;
   const text = flatten(msg.message);
   const mentioned = mentionsSelf(msg, self);
@@ -448,6 +528,11 @@ async function processMessage(kind, peer, msg, history, self) {
       /* 画像记不下来不影响回复 */
     }
   }
+
+  // ── 偷表情包 ──
+  // 别人发的表情，看着像就存进自己的库。真人看到好图会存，这是最像人的一条。
+  // 放在回复判断之前：不管我回不回，图都先收了。
+  await tryStealSticker(msg, kind, peer).catch(() => {});
 
   const decision = await shouldReply(kind, peer, meta.mentioned, meta.time, history);
   if (!decision.reply) {

@@ -2,6 +2,27 @@
 
 所有值得记录的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.37.0] - 2026-11-07
+
+### Added
+
+- **偷表情包**（`src/core/sticker-steal.ts`）：
+  别人在群里发的图，看着像表情就存进自己的库。真人看到好图会存，这是最像人的一条
+  - 判据全是能量出来的：体积（0.8KB~2MB）、长宽比（0.4~2.5）、分辨率（<250万像素）
+  - **严格模式**：消息里的图没有表情包特征（`sub_type≠1` 且 summary 不是 `[xxx]`）时，
+    收紧到 800px / 64 万像素以内——挡掉手机截图和照片
+  - 动图（GIF 多帧）直接收
+  - **限流**：每个群每天最多 8 张（`stealDailyLimit`），防止库里塞满垃圾
+  - **可追溯**：manifest 里记 `stolenFrom { uin, name, scope, at }`，以后能说"这是从你那偷的"
+  - 开关：`stealStickers`（默认开）
+- 无依赖读图尺寸：PNG / JPEG / GIF / WEBP 的宽高直接从字节里解，不引图像库
+
+### Notes
+
+- 535 测试 / 37 文件
+- 收进来的图先用「偷来的 <来源名>」当标签，具体含义等打标脚本补
+  （`scripts/label-emoji-vlm.mjs` 可以直接处理这些新条目）
+
 ## [0.36.0] - 2026-11-07
 
 ### Added
