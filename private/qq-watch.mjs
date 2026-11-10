@@ -475,7 +475,7 @@ async function runOnce() {
     lines.push('');
     // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
     // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
-    lines.push('回复前先读 private/personas/global.md（167 行）——那是我说话的样子，不是参考资料。不读就别开口。');
+    lines.push('回复前先读 private/personas/global.md（178 行）——那是我说话的样子，不是参考资料。不读就别开口。');
     lines.push(head.kind === 'private'
       ? '要回就回，不想回可以 skip。'
       : (batch.some((m) => m.mentioned)
