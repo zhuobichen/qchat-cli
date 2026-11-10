@@ -11,6 +11,13 @@ function makeBackend(): McpBackend {
     sendSticker: vi.fn(async () => ({ ok: true })),
     recallMemory: vi.fn(async () => [{ id: 'm1', text: '用户喜欢冰美式', score: 0.9 }]),
     rememberMemory: vi.fn(async () => ({ id: 'm2', added: true })),
+    hexPlayerStats: vi.fn(async ({ player }: any) => ({ card: `【${player}】近 10 局` })),
+    hexSearchPlayer: vi.fn(async () => [{ riotId: 'Faker#0520', server: 'HN1', level: 1550 }]),
+    hexAugment: vi.fn(async () => [{ name: '牙仙子', level: '黄金阶', desc: '爆裂敌人会掉落牙齿。' }]),
+    hexTeamReport: vi.fn(async () => ({
+      teams: [{ gameId: 11448890406, card: '【开黑播报】3 人一队 · 10 分钟前 · 赢了' }],
+    })),
+    hexAnnounceNow: vi.fn(async ({ gameId }: any) => ({ ok: true, gameId })),
   };
 }
 
@@ -23,11 +30,13 @@ describe('MCP server', () => {
     });
   });
 
-  it('tools/list 暴露三个工具且带 inputSchema', async () => {
+  it('tools/list 暴露的工具都带 inputSchema', async () => {
     const res = await handleMessage(makeBackend(), { jsonrpc: '2.0', id: 2, method: 'tools/list' });
     const tools = (res?.result as { tools: typeof TOOLS }).tools;
     expect(tools.map((t) => t.name)).toEqual([
-      'search_messages', 'group_digest', 'list_groups', 'recall_memory', 'remember_memory', 'send_sticker', 'send_message',
+      'search_messages', 'group_digest', 'list_groups', 'recall_memory', 'remember_memory', 'send_sticker',
+      'hex_player_stats', 'hex_search_player', 'hex_augment', 'hex_team_report', 'hex_announce',
+      'send_message',
     ]);
     for (const t of tools) expect(t.inputSchema).toBeTypeOf('object');
   });

@@ -404,14 +404,17 @@ async function runOnce() {
     const st = await api('get_status', {});
     if (st?.online !== true) {
       offlinePolls += 1;
+      // 不要因为这一条就停。
+      // 实测（2026-11-07）：get_status 报 online=false 时，发消息、读历史全都正常，
+      // 是 NapCat/NTQQ 的状态位不准。之前一见 false 就 return，结果"进程活着却一条不收"。
+      // 现在的做法：报一次，然后继续轮询——真掉线时轮询自然收不到东西，代价只是几行日志。
       if (offlinePolls === 1 || offlinePolls % 60 === 0) {
-        log(`[掉线] NapCat online=false（连续 ${offlinePolls} 轮）——消息收不到，需要重新登录`);
+        log(
+          `[疑似掉线] get_status.online=false（连续 ${offlinePolls} 轮）——继续轮询，若确实收不到再扫码`
+        );
       }
-      saveStateAtomic(STATE_PATH, state);
-      return;
-    }
-    if (offlinePolls > 0) {
-      log(`[恢复] NapCat 重新在线（掉线 ${offlinePolls} 轮）`);
+    } else if (offlinePolls > 0) {
+      log(`[恢复] NapCat 重新在线（之前 ${offlinePolls} 轮报 false）`);
       offlinePolls = 0;
     }
   } catch (e) {
@@ -470,6 +473,9 @@ async function runOnce() {
     }
 
     lines.push('');
+    // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
+    // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
+    lines.push('回复前先读 private/personas/global.md（167 行）——那是我说话的样子，不是参考资料。不读就别开口。');
     lines.push(head.kind === 'private'
       ? '要回就回，不想回可以 skip。'
       : (batch.some((m) => m.mentioned)

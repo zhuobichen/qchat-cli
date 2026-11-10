@@ -6,6 +6,80 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { spawn, execSync } from 'child_process';
+
+const QR_VIEWER_RE = 'qrcode';
+
+/**
+ * 上次弹出的二维码窗口 PID 记在这里。
+ * 为什么记 PID：Windows 图片查看器不复用窗口，`start qrcode.png` 每次都开新的；
+ * 重启五次就叠五个窗口，屏幕上全是被埋住的过期码。
+ * 而 MainWindowTitle 在非交互会话里读不到（实测拿到 0 个），所以不能靠标题找窗口，
+ * 只能自己记住"我开的是哪个进程"，下一轮把它关掉。
+ *
+ * 为什么不放 ~/.qchat-cli：那个目录对当前上下文是只读的（Set-Content 直接被拒），
+ * 写进去等于没记。项目 output/ 是可写的。
+ */
+const QR_PID_FILE = join(process.cwd(), 'output', '.qr-viewer.pid');
+
+/**
+ * 看图器的进程名白名单：只杀自己开的那种，别误伤别人的程序。
+ * 实测本机的默认看图器是 360AlbumViewer64.exe（不是系统 Photos），
+ * 所以这里必须带上 albumviewer/viewer，否则按名字校验永远不匹配、窗口永远关不掉。
+ */
+const VIEWER_NAME_RE = /photos|framehost|mspaint|media|paint|imageglass|honeyview|jpegview|albumviewer|360album|viewer/i;
+
+/** 关掉上一次自己开的二维码窗口 */
+function closeQrViewers(): void {
+  if (process.platform !== 'win32') return;
+  let pid = '';
+  try {
+    pid = readFileSync(QR_PID_FILE, 'utf8').trim();
+  } catch {
+    return; // 没有记录 = 没开过
+  }
+  if (!/^\d+$/.test(pid)) return;
+  try {
+    // 先确认这个 PID 现在还是个看图器，避免 PID 被别的程序复用后误杀
+    const name = execSync(
+      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' -ErrorAction SilentlyContinue).Name"`,
+      { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 6000 },
+    )
+      .toString()
+      .trim();
+    if (name && VIEWER_NAME_RE.test(name)) {
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', windowsHide: true, timeout: 6000 });
+    }
+  } catch {
+    /* 关不掉就算了，不能挡住启动流程 */
+  }
+  try {
+    unlinkSync(QR_PID_FILE);
+  } catch {}
+}
+
+/** 弹出二维码窗口：先关掉上一次的，保证屏幕上只有一张 */
+function openQrWindow(qrImage: string): void {
+  closeQrViewers();
+  if (process.platform !== 'win32') return;
+  try {
+    // 用 -PassThru 拿 PID，记下来，下一轮才有得关
+    const out = execSync(
+      `powershell -NoProfile -Command "(Start-Process -FilePath '${qrImage.replace(/'/g, "''")}' -PassThru).Id"`,
+      { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 10000 },
+    )
+      .toString()
+      .trim();
+    if (/^\d+$/.test(out)) {
+      writeFileSync(QR_PID_FILE, out, 'utf8');
+      return;
+    }
+  } catch {
+    /* 拿不到 PID 就退回普通方式，至少能看到码 */
+  }
+  try {
+    spawn('cmd', ['/c', 'start', '', qrImage], { stdio: 'ignore', detached: true }).unref();
+  } catch {}
+}
 import { existsSync, writeFileSync, readFileSync, readdirSync, mkdirSync, unlinkSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import http from 'http';
@@ -169,8 +243,19 @@ async function httpGet(url: string, token?: string): Promise<any> {
 }
 
 /** 检查 NapCat 是否运行中 */
-async function checkNapCat(host: string, port: number) {
-  const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`);
+/**
+ * 探测 NapCat 是否在跑。
+ *
+ * ⚠️ 必须带 token：配置里设了 token 之后，不带 Authorization 的请求会直接 403。
+ * 早期这个函数没传 token，于是「已经在跑」永远探测成「没在跑」，后果有两串：
+ *   1. `qce napcat status` 一直显示「离线」，明明在线；
+ *   2. `qce napcat start` 在已经在线时还是重新拉起一个实例 —— 新实例绑不上
+ *      已被占用的 :3000，接下来的登录轮询永远等不到 ready，白等满 180 秒才报
+ *      「登录超时」。用户看到的就是「明明登录了，还在那儿转圈」。
+ */
+async function checkNapCat(host: string, port: number, napcatDir: string, uin?: string) {
+  const token = readOnebotToken(napcatDir, uin);
+  const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`, token);
   if (info?.status === 'ok' && info?.data) {
     return { running: true, nickname: info.data.nickname as string, userId: info.data.user_id as number };
   }
@@ -225,7 +310,7 @@ export function napcatCommand(program: Command): void {
       }
 
       // 先检查是否已在运行
-      const existing = await checkNapCat(host, port);
+      const existing = await checkNapCat(host, port, napcatDir, uin);
       if (existing.running) {
         console.log(chalk.green(`NapCat 已在运行 — ${existing.nickname} (${existing.userId})`));
         return;
@@ -315,7 +400,7 @@ export function napcatCommand(program: Command): void {
         if (qrImage && !qrOpened) {
           qrOpened = true;
           try {
-            spawn('cmd', ['/c', 'start', '', qrImage], { stdio: 'ignore', detached: true }).unref();
+            openQrWindow(qrImage);
             console.log(chalk.green('✓ 二维码已弹出，请用手机 QQ 扫描'));
             console.log(chalk.dim(`  图片: ${qrImage}`));
           } catch {}
@@ -340,7 +425,7 @@ export function napcatCommand(program: Command): void {
             qrImage = cacheQr;
             qrOpened = true;
             try {
-              spawn('cmd', ['/c', 'start', '', cacheQr], { stdio: 'ignore', detached: true }).unref();
+              openQrWindow(cacheQr);
               console.log(chalk.green('✓ 二维码已弹出，请用手机 QQ 扫描'));
             } catch {}
           }
@@ -402,6 +487,8 @@ export function napcatCommand(program: Command): void {
       }
 
       if (ready) {
+        // 登录成功后二维码就作废了，留在屏幕上只会误导人，顺手收掉
+        closeQrViewers();
         let loggedInUin = firstLoginUin;
         if (!firstLoginUin) {
           const info = await httpGet(`${getNapCatUrl(host, port)}/get_login_info`, readOnebotToken(napcatDir, uin));
@@ -475,7 +562,7 @@ export function napcatCommand(program: Command): void {
     .action(async (options) => {
       const host = options.host;
       const port = parseInt(options.port);
-      const nc = await checkNapCat(host, port);
+      const nc = await checkNapCat(host, port, DEFAULT_NAPCAT_DIR);
       let bridgeOk = false;
       try {
         const b = await httpGet(`http://${host}:3001/health`);

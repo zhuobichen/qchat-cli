@@ -81,3 +81,11 @@ jieba.cache
 .get302.mjs
 .probe-qzone.mjs
 qzone-qrcode.png
+
+# 生成产物（wiki 由 terms.jsonl 生成）
+private/wiki/
+# 调试脚手架
+.dbg-*.mjs
+.probe-*.mjs
+.try-*.mjs
+*.lnk

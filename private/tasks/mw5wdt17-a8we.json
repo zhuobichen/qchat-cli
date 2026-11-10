@@ -1,0 +1,14 @@
+{
+  "id": "mw5wdt17-a8we",
+  "type": "song",
+  "target": "private:1473517806",
+  "deliver": "voice",
+  "command": "node -e console.log('RESULT=D:/github_project/ZhaoWen_GitHub维护/qchat-cli/output/song/chunked2/excerpt.amr')",
+  "status": "done",
+  "createdAt": 1794025367611,
+  "startedAt": 1794025367611,
+  "finishedAt": 1794025367642,
+  "exitCode": 0,
+  "result": "D:/github_project/ZhaoWen_GitHub维护/qchat-cli/output/song/chunked2/excerpt.amr",
+  "delivered": true
+}

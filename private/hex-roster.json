@@ -1,0 +1,46 @@
+{
+  "_说明": "群成员 ↔ RiotID 对应表。hex 战绩查询与开黑播报都读这里。",
+  "group": 913807639,
+  "announce": {
+    "_规则": "同局里必须有 anchor 那位，且除他之外还有至少 minOthers 名成员，才算「一起开黑」，触发播报。",
+    "anchor": 1473517806,
+    "minOthers": 2,
+    "maxAgeMinutes": 180,
+    "pollSeconds": 180,
+    "minDurationSeconds": 300,
+    "_重开说明": "对局时长低于这个值（秒）视为重开，不播报也不评战犯",
+    "maxPushAgeMinutes": 20,
+    "_推送说明": "只有这个时间内的新局才会推给我确认；更早的交给 --send 手动补发"
+  },
+  "members": [
+    {
+      "qq": 1473517806,
+      "qqName": "青春期彪儿不会遇上晟大爹",
+      "riotId": "今人不见古时月#23377",
+      "note": "房主 sxs，播报锚点",
+      "puuid": "92ddebf8-502b-556c-afc2-63a4eeaa622e",
+      "server": "TENCENT_HN1"
+    },
+    {
+      "qq": 363541585,
+      "qqName": "美咕噜单推人",
+      "riotId": "种蘑菇的坏提莫#29184",
+      "puuid": "59a8a296-8a68-5979-9d49-8661e20c9428",
+      "server": "TENCENT_HN1"
+    },
+    {
+      "qq": 1271851376,
+      "qqName": "阳村纯鹿人",
+      "riotId": "回憶燒成灰#63408",
+      "puuid": "4fb816b8-ec64-5143-8872-1665d18c530f",
+      "server": "TENCENT_HN1"
+    },
+    {
+      "qq": 1441816738,
+      "qqName": "冷峰沉睡",
+      "riotId": "自己的丁ding#66595",
+      "puuid": "53863f37-a6b2-5154-9085-e2c3cbd77512",
+      "server": "TENCENT_HN1"
+    }
+  ]
+}

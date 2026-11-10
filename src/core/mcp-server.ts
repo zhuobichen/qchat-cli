@@ -33,6 +33,22 @@ export interface McpBackend {
   rememberMemory(args: { text: string; scope?: string; weight?: number }): Promise<unknown>;
   /** 真正发送表情 */
   sendSticker(args: { kind: 'private' | 'group'; target: number; stickerId: string; label: string; remoteUrl?: string }): Promise<unknown>;
+  /**
+   * 海克斯大乱斗战绩：按 RiotID 查某人最近的对局。
+   * 返回 { card: 可直接贴进群的文本, candidate, overview? }。
+   */
+  hexPlayerStats(args: { player: string; games?: number; raw?: boolean }): Promise<unknown>;
+  /** 搜同名玩家，用于消歧（只给名字时会有多个候选） */
+  hexSearchPlayer(args: { name: string }): Promise<unknown>;
+  /** 查某个海克斯强化的效果（名字模糊匹配） */
+  hexAugment(args: { q: string }): Promise<unknown>;
+  /**
+   * 列出最近满足「开黑」条件的对局（只读）。
+   * 条件来自 private/hex-roster.json：anchor 在场 + 至少 minOthers 名成员。
+   */
+  hexTeamReport(args: { depth?: number }): Promise<unknown>;
+  /** 真正发出某一局的开黑播报（两阶段确认通过后才调用） */
+  hexAnnounceNow(args: { gameId: number }): Promise<unknown>;
 }
 
 /** 群发开关：默认关闭，只能在进程内显式打开（MCP 场景不给模型这个能力） */
@@ -56,10 +72,14 @@ const pending = new Map<string, PendingSend>();
 /** 表情确认令牌 → 已选定的表情 */
 const pendingStickers = new Map<string, { id: string; label: string; source: string }>();
 
+/** 开黑播报确认令牌 → 待播的那一局 */
+const pendingHex = new Map<string, { gameId: number; text: string; expiresAt: number }>();
+
 /** 仅供测试：清空待确认队列 */
 export function __clearPending(): void {
   pending.clear();
   pendingStickers.clear();
+  pendingHex.clear();
 }
 let tokenSeq = 0;
 
@@ -153,6 +173,65 @@ export const TOOLS: McpTool[] = [
         confirmationToken: { type: 'string', description: '第一阶段返回的 ctk_xxx' },
       },
       required: ['target'],
+    },
+  },
+  {
+    name: 'hex_player_stats',
+    description:
+      '查某人的英雄联盟「海克斯大乱斗」战绩：胜率、KDA、综合实力分、最近几局用了什么英雄和哪些海克斯强化。数据来自第三方站点 hex.hexsss.com 的公开接口。需要 RiotID，形如 名字#1234。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        player: { type: 'string', description: 'RiotID，必须带 #TAG，例如 Faker#0520' },
+        games: { type: 'number', description: '列出最近几局，默认 3，最多 10' },
+        raw: { type: 'boolean', description: 'true 时附带完整原始 JSON（默认只给卡片文本）' },
+      },
+      required: ['player'],
+    },
+  },
+  {
+    name: 'hex_search_player',
+    description: '按名字搜海克斯大乱斗玩家，返回候选（RiotID + 大区 + 等级），用于确认要查哪一个。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '角色名（可只给名字不带 #TAG）' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'hex_augment',
+    description: '查海克斯大乱斗某个强化符文的效果。名字可以模糊匹配，例如「牙仙子」「珠光」。数据来自本地缓存的完整强化表。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: '强化名或其中一部分' },
+      },
+      required: ['q'],
+    },
+  },
+  {
+    name: 'hex_team_report',
+    description:
+      '列出群里最近「一起开黑」的海克斯大乱斗对局：同一局里有指定锚点玩家，且还有至少 N 名名单成员。只读，不发消息。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        depth: { type: 'number', description: '每人往前看几局，默认 8' },
+      },
+    },
+  },
+  {
+    name: 'hex_announce',
+    description:
+      '把某一局开黑播报发到群里。两阶段：先不带令牌调用拿预览，确认后再带 confirmationToken 调用才真正发送。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        gameId: { type: 'number', description: '要播报的对局 id（来自 hex_team_report）；省略则取最新一局' },
+        confirmationToken: { type: 'string', description: '第一阶段返回的令牌；带上才会真发' },
+      },
     },
   },
   {
@@ -334,6 +413,145 @@ confirmation_token: ${ctk}
               ...((sticker as any).remoteUrl ? { remoteUrl: (sticker as any).remoteUrl } : {}),
             });
             return ok(id, { content: [{ type: 'text', text: JSON.stringify(sent ?? { ok: true }, null, 2) }] });
+          }
+
+          case 'hex_player_stats': {
+            const player = String(args.player ?? '').trim();
+            if (player === '') {
+              return ok(id, { content: [{ type: 'text', text: '缺少参数 player（形如 名字#1234）' }], isError: true });
+            }
+            const games = typeof args.games === 'number' ? Math.min(10, Math.max(1, Math.floor(args.games))) : 3;
+            try {
+              const res = (await backend.hexPlayerStats({ player, games, raw: args.raw === true })) as { card?: string };
+              const text = res?.card ?? JSON.stringify(res, null, 2);
+              return ok(id, { content: [{ type: 'text', text }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `查战绩失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'hex_search_player': {
+            const name = String(args.name ?? '').trim();
+            if (name === '') {
+              return ok(id, { content: [{ type: 'text', text: '缺少参数 name' }], isError: true });
+            }
+            const data = await backend.hexSearchPlayer({ name });
+            return ok(id, { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
+          }
+
+          case 'hex_augment': {
+            const q = String(args.q ?? '').trim();
+            if (q === '') {
+              return ok(id, { content: [{ type: 'text', text: '缺少参数 q' }], isError: true });
+            }
+            const data = (await backend.hexAugment({ q })) as Array<{ name?: string; level?: string; desc?: string }>;
+            if (!Array.isArray(data) || data.length === 0) {
+              return ok(id, { content: [{ type: 'text', text: `没找到「${q}」这个强化` }] });
+            }
+            const text = data
+              .map((a) => `【${a.name ?? '?'}】${a.level ?? ''}\n  ${a.desc ?? '(无描述)'}`)
+              .join('\n\n');
+            return ok(id, { content: [{ type: 'text', text }] });
+          }
+
+          case 'hex_team_report': {
+            const depth = typeof args.depth === 'number' ? Math.min(20, Math.max(3, Math.floor(args.depth))) : 8;
+            try {
+              const data = (await backend.hexTeamReport({ depth })) as {
+                teams?: Array<{ gameId: number; card: string }>;
+              };
+              const teams = data?.teams ?? [];
+              if (teams.length === 0) {
+                return ok(id, { content: [{ type: 'text', text: '最近没有满足条件的开黑局' }] });
+              }
+              const text = teams
+                .map((t) => `gameId=${t.gameId}\n${t.card}`)
+                .join('\n\n---\n\n');
+              return ok(id, { content: [{ type: 'text', text }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `查开黑失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'hex_announce': {
+            const token = typeof args.confirmationToken === 'string' ? args.confirmationToken : '';
+            const wantId = typeof args.gameId === 'number' ? Math.floor(args.gameId) : undefined;
+
+            if (token === '') {
+              // 第一阶段：找局、渲染、登记，不发
+              let report;
+              try {
+                report = (await backend.hexTeamReport({ depth: 8 })) as {
+                  teams?: Array<{ gameId: number; card: string }>;
+                };
+              } catch (error) {
+                return ok(id, {
+                  content: [{ type: 'text', text: `查开黑失败：${(error as Error)?.message ?? error}` }],
+                  isError: true,
+                });
+              }
+              const teams = report?.teams ?? [];
+              const target = wantId ? teams.find((t) => t.gameId === wantId) : teams[0];
+              if (!target) {
+                return ok(id, {
+                  content: [{ type: 'text', text: wantId ? `没有 gameId=${wantId} 的开黑局` : '最近没有可播报的开黑局' }],
+                });
+              }
+              const ctk = makeToken();
+              pendingHex.set(ctk, {
+                gameId: target.gameId,
+                text: target.card,
+                expiresAt: Date.now() + (options.tokenTtlMs ?? 300_000),
+              });
+              return ok(id, {
+                content: [{
+                  type: 'text',
+                  text: `待确认：将播报 gameId=${target.gameId}
+
+${target.card}
+
+确认后再调用一次 hex_announce，带上：
+confirmationToken: ${ctk}
+（5 分钟内有效）`,
+                }],
+              });
+            }
+
+            const entry = pendingHex.get(token);
+            if (!entry) {
+              return ok(id, {
+                content: [{ type: 'text', text: '令牌无效或已过期，请重新走一次预览' }],
+                isError: true,
+              });
+            }
+            if (Date.now() > entry.expiresAt) {
+              pendingHex.delete(token);
+              return ok(id, { content: [{ type: 'text', text: '令牌已过期，请重新走一次预览' }], isError: true });
+            }
+            if (options.allowGroupSend !== true) {
+              return ok(id, {
+                content: [{ type: 'text', text: '群发已在服务端禁用（需要显式打开 MCP_ALLOW_GROUP_SEND=1）' }],
+                isError: true,
+              });
+            }
+            try {
+              const res = await backend.hexAnnounceNow({ gameId: entry.gameId });
+              pendingHex.delete(token);
+              return ok(id, {
+                content: [{ type: 'text', text: `已播报 gameId=${entry.gameId}\n${JSON.stringify(res)}` }],
+              });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `播报失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
           }
 
           case 'send_message': {

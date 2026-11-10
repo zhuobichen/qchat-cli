@@ -18,9 +18,17 @@ if not exist "dist\cli.js" (
 
 set "NCDIR=%USERPROFILE%\.qchat-cli\NapCat.Shell\napcat"
 
-echo [1/3] Clearing stale QR code and old NapCat processes ...
+echo [1/3] Clearing stale QR code, old NapCat AND old QQ processes ...
 if exist "%NCDIR%\cache\qrcode.png" del /f /q "%NCDIR%\cache\qrcode.png"
 taskkill /F /IM NapCatWinBootMain.exe >nul 2>&1
+
+REM Why kill QQ too: NapCat lives *inside* QQ. If a previous QQ is still running,
+REM the new NapCat cannot take over ports 3000/6099, and the freshly logged-in
+REM account stays unreachable (get_status.online=false forever).
+REM Symptom seen 2026-11-07: two QQ.exe instances coexisting for days, the old
+REM one holding :3000 with a dead session; re-login never took effect.
+REM NOTE: this kills every QQ on this machine. This box is dedicated to the bot.
+taskkill /F /IM QQ.exe >nul 2>&1
 echo       done
 
 echo [2/3] Starting NapCat + QQ (zhaowen 2396130865) ...

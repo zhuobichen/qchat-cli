@@ -38,6 +38,11 @@ export interface KnowledgeTerm {
   era?: string;
   /** 风险标记（脏话/冒犯），这类不该主动用 */
   risky?: boolean;
+  /**
+   * 资料可信度/优先级。high = 权威来源整理过的（如梗百科逐期视频），
+   * 检索时优先取、喂给 whisper 做术语提示时也优先取。缺省按 normal 处理。
+   */
+  priority?: 'high' | 'normal';
   /** 出处说明（来自数据集时保留原意） */
   origin?: string;
   /**

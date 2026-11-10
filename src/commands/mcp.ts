@@ -10,6 +10,8 @@ import { MessageStore, defaultIndexRoot } from '../core/message-store.js';
 import { safetyManager } from '../core/safety.js';
 import { pickStickerMerged, stickerFile } from '../core/sticker.js';
 import { MemoryStore, recallMemories, filterByKeyword } from '../core/memory.js';
+import { hexSearch, pickCandidate, hexOverview, hexAugments, findAugment, renderHexCard } from '../core/hex-api.js';
+import { loadRoster, findTeamGames, renderTeamBroadcast, type HexRoster } from '../core/hex-team.js';
 
 /**
  * 把 OneBot 客户端包装成 MCP backend。
@@ -148,13 +150,99 @@ function makeBackend(): McpBackend {
         members: g.member_count,
       }));
     },
+
+    // ── 海克斯大乱斗（第三方 hex.hexsss.com 的公开接口，只读）───────────────
+    async hexPlayerStats({ player, games, raw }) {
+      const list = await hexSearch(player);
+      if (list.length === 0) {
+        return { card: `没找到「${player}」。要带 #TAG 一起，比如 名字#1234` };
+      }
+      const cand = pickCandidate(list, player);
+      if (!cand) return { card: `「${player}」没有可用候选` };
+
+      const ov = await hexOverview(cand.puuid, cand.sgpServerId, Math.max(10, games ?? 3));
+      const card = renderHexCard(cand, ov, games ?? 3);
+
+      if (raw) {
+        return { card, candidate: cand, overview: ov, otherCandidates: list.length - 1 };
+      }
+      return { card, ...(list.length > 1 ? { note: `另有 ${list.length - 1} 个同名候选，可用 hex_search_player 查看` } : {}) };
+    },
+
+    async hexSearchPlayer({ name }) {
+      const list = await hexSearch(name);
+      return list.slice(0, 10).map((c) => ({
+        riotId: `${c.gameName}#${c.tagLine}`,
+        server: String(c.sgpServerId ?? '').replace('TENCENT_', ''),
+        level: c.summonerLevel ?? null,
+      }));
+    },
+
+    async hexAugment({ q }) {
+      const items = await hexAugments(hexAugmentCachePath());
+      return findAugment(items, q);
+    },
+
+    async hexTeamReport({ depth }) {
+      const roster = loadHexRoster();
+      const games = await findTeamGames(roster, { depth: depth ?? 8 });
+      return {
+        teams: games.map((g) => ({
+          gameId: g.gameId,
+          creation: g.creation,
+          win: g.win,
+          members: g.results.map((r) => ({ qq: r.qq, name: r.qqName, champion: r.champion })),
+          card: renderTeamBroadcast(g),
+        })),
+      };
+    },
+
+    async hexAnnounceNow({ gameId }) {
+      const roster = loadHexRoster();
+      const games = await findTeamGames(roster, { depth: 8 });
+      const g = games.find((x) => x.gameId === gameId);
+      if (!g) throw new Error(`没有 gameId=${gameId} 的开黑局（可能已超出时间窗）`);
+      if (!safetyManager.isAllowed(roster.group)) {
+        throw new Error(`群 ${roster.group} 未授权发送（先跑 qce safety allow ${roster.group}）`);
+      }
+      const text = renderTeamBroadcast(g);
+      await client.sendGroupMessage(roster.group, text);
+      return { ok: true, group: roster.group, gameId, members: g.results.length, win: g.win };
+    },
   };
+}
+
+/** 名单位置：跟强化表缓存放一起，都在索引目录 */
+function hexRosterPath(): string {
+  return join(defaultIndexRoot(), 'hex-roster.json');
+}
+
+function hexAugmentCachePath(): string {
+  return join(defaultIndexRoot(), 'hex-augments.json');
+}
+
+/**
+ * 读名单。优先用索引目录里那份（可回写 puuid），
+ * 没有就退回项目里的 private/hex-roster.json。
+ */
+function loadHexRoster(): HexRoster {
+  const candidates = [hexRosterPath(), join(process.cwd(), 'private', 'hex-roster.json')];
+  for (const p of candidates) {
+    try {
+      return loadRoster(p);
+    } catch {
+      /* 试下一个 */
+    }
+  }
+  throw new Error('找不到 hex-roster.json（名单文件）');
 }
 
 export function mcpCommand(program: Command): void {
   program
     .command('mcp')
-    .description('以 MCP server 方式运行（stdio），供 Claude Code / Cursor 调用：search_messages / group_digest / list_groups')
+    .description(
+      '以 MCP server 方式运行（stdio），供 Claude Code / Cursor 调用：search_messages / group_digest / list_groups / recall_memory / send_sticker / hex_player_stats / hex_search_player / hex_augment',
+    )
     .action(() => {
       if (!authManager.isConfigured()) {
         // MCP 客户端看不到 stdout 之外的日志，错误必须写 stderr

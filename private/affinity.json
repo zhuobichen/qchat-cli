@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "users": {
+    "243876708": {
+      "uin": "243876708",
+      "name": "糯米天师",
+      "firstMetAt": 1794115553279,
+      "lastTalkAt": 1794115553736,
+      "msgsFrom": 4,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0,
+      "topics": {
+        "游戏": 1
+      }
+    },
+    "292430085": {
+      "uin": "292430085",
+      "name": "木叶",
+      "firstMetAt": 1794130937371,
+      "lastTalkAt": 1794130937382,
+      "msgsFrom": 3,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0,
+      "topics": {
+        "吃": 1
+      }
+    },
+    "363541585": {
+      "uin": "363541585",
+      "name": "美咕噜单推人",
+      "firstMetAt": 1794035185508,
+      "lastTalkAt": 1794141932696,
+      "msgsFrom": 14,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0
+    },
+    "1271851376": {
+      "uin": "1271851376",
+      "name": "阳村纯鹿人",
+      "firstMetAt": 1794030806595,
+      "lastTalkAt": 1794144474440,
+      "msgsFrom": 34,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0,
+      "topics": {
+        "吃": 1
+      }
+    },
+    "1441001315": {
+      "uin": "1441001315",
+      "name": "卓者如必",
+      "firstMetAt": 1794030806726,
+      "lastTalkAt": 1794141173629,
+      "msgsFrom": 20,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 1,
+      "topics": {
+        "原神": 2
+      }
+    },
+    "1441816738": {
+      "uin": "1441816738",
+      "name": "冷峰沉睡",
+      "firstMetAt": 1794030806556,
+      "lastTalkAt": 1794144860179,
+      "msgsFrom": 84,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 1,
+      "topics": {
+        "原神": 6,
+        "吃": 3,
+        "外卖": 1,
+        "游戏": 3
+      }
+    },
+    "1473517806": {
+      "uin": "1473517806",
+      "name": "青春期彪儿不会遇上晟大爹",
+      "firstMetAt": 1794030806565,
+      "lastTalkAt": 1794141179959,
+      "msgsFrom": 77,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0,
+      "topics": {
+        "服务器": 4
+      }
+    },
+    "1838721627": {
+      "uin": "1838721627",
+      "name": "想要只精通c++的猫娘",
+      "firstMetAt": 1794030806573,
+      "lastTalkAt": 1794030848405,
+      "msgsFrom": 2,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0,
+      "topics": {
+        "编程": 2
+      }
+    },
+    "2209307507": {
+      "uin": "2209307507",
+      "name": "哦，原来是这样",
+      "firstMetAt": 1794115553521,
+      "lastTalkAt": 1794115553521,
+      "msgsFrom": 1,
+      "msgsTo": 0,
+      "engaged": 0,
+      "snubs": 0
+    }
+  }
+}

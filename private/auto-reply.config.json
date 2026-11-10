@@ -18,5 +18,9 @@
   "freeChat": true,
   "freeChatProbability": 0.35,
   "maxRepliesPerHour": 8,
-  "emojiChance": 0.35
+  "emojiChance": 0.35,
+  "observeGroups": [
+    913807639,
+    1134983058
+  ]
 }

@@ -221,7 +221,13 @@ export class OneBotClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    return retry(async () => {
+    // 发送类动作有副作用：重试会造成重复发言。
+    // NapCat（NTQQ 内核）存在一种"已经发出去、但等不到回执"的超时，
+    // 实测表现为 API error: Timeout ... NodeIKernelMsgService/sendMsg。
+    // 对这类错误重试 → 群里出现同样内容 3 遍（2026-11-07 实测踩到）。
+    const isSend = /^send_/.test(action);
+
+    const doCall = async (): Promise<T> => {
       const response = await fetchWithTimeout(url, {
         method: 'POST',
         headers,
@@ -239,7 +245,22 @@ export class OneBotClient {
       }
 
       return result.data;
-    });
+    };
+
+    try {
+      // 发送不重试（maxRetries=1），其余动作照旧 3 次
+      return await retry(doCall, isSend ? 1 : 3);
+    } catch (error) {
+      const msg = String((error as Error)?.message ?? error);
+      const ambiguousSend = isSend && /NTEvent|Timeout|timeout/i.test(msg);
+      if (ambiguousSend) {
+        logger.warn(
+          `[${action}] 回执超时，但消息很可能已经送达；不重试、按成功处理（避免重复发言）`
+        );
+        return { message_id: 0 } as unknown as T;
+      }
+      throw error;
+    }
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -422,16 +443,23 @@ export class OneBotClient {
 
   /**
    * 获取群消息历史
+   *
+   * ⚠️ 想往前翻页必须传 `reverseOrder: true`。
+   * 只把上一页最早的 `message_seq` 塞进去、不带 reverseOrder，NapCat 会**忽略这个参数**
+   * 并再把最新一页返回一遍 —— 翻页循环于是原地打转，看起来像"只能拿 100 条"。
+   * 带上之后实测能一页页往回翻到服务端保留的尽头。
    */
   async getGroupMsgHistory(
     groupId: number,
     messageSeq?: number,
-    count: number = 20
+    count: number = 20,
+    reverseOrder: boolean = false
   ): Promise<{ messages: Message[] }> {
     return this.request<{ messages: Message[] }>('get_group_msg_history', {
       group_id: groupId,
       message_seq: messageSeq,
       count,
+      ...(reverseOrder ? { reverseOrder: true } : {}),
     });
   }
 

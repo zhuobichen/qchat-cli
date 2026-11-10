@@ -62,6 +62,10 @@ function loadConfig() {
     http: raw.http ?? 'http://127.0.0.1:3000',
     token,
     groups: Array.isArray(raw.groups) ? raw.groups.map(Number) : [],
+    // 只观察、不回复的群。
+    // 为什么需要：偷表情包、记好感度这些事跟"要不要回话"是两回事。
+    // 群里我手动判断该不该接，但表情和关系数据得照收，否则这两个功能在群里等于没有。
+    observeGroups: Array.isArray(raw.observeGroups) ? raw.observeGroups.map(Number) : [],
     includePrivate: raw.includePrivate !== false,
     allow: Array.isArray(raw.allow) ? raw.allow.map(String) : [],
     intervalSec: Math.max(raw.intervalSec ?? 2, 1),
@@ -537,8 +541,10 @@ async function processMessage(kind, peer, msg, history, self) {  const meta = { 
   const decision = await shouldReply(kind, peer, meta.mentioned, meta.time, history);
   if (!decision.reply) {
     state.stats.skipped += 1;
-    // 只有"值得注意"的跳过才记日志；太老/间隔不足是常态
-    if (!/太老|间隔不足/.test(decision.reason)) log(`跳过 ${key}: ${decision.reason}`);
+    // 只有"值得注意"的跳过才记日志；太老/间隔不足是常态。
+    // 观察群的"不在白名单"更不该刷屏——那个群本来就不回，每 2 秒打一行没意义。
+    const quiet = /太老|间隔不足|不在白名单|不在自动回复列表/.test(decision.reason);
+    if (!quiet) log(`跳过 ${key}: ${decision.reason}`);
     return;
   }
 
@@ -790,6 +796,11 @@ async function getPeers() {
   for (const gid of cfg.groups) {
     peers.push({ kind: 'group', peer: String(gid), name: `群${gid}` });
   }
+  // 只观察的群：进来收图、记关系，但回复门卫会挡掉（见 shouldReply 的群白名单判断）
+  for (const gid of cfg.observeGroups) {
+    if (cfg.groups.includes(gid)) continue;
+    peers.push({ kind: 'group', peer: String(gid), name: `群${gid}(观察)` });
+  }
   peersCache = peers;
   peersCacheAt = now;
   return peers;
@@ -801,22 +812,23 @@ async function runOnce() {
     log(`熔断中，跳过本轮`);
     return;
   }
-  // 在线检查：掉线时 get_login_info 仍会返回缓存的账号信息，
-  // 但 get_status.online === false —— 此时所有轮询都是白跑，且没有任何报错。
-  // 必须显式检测，否则表现成"进程活着但什么都不干"。
+  // 在线检查：掉线时 get_login_info 仍会返回缓存的账号信息。
+  // 注意：get_status.online 会误报 false —— 实测（2026-11-07）在 online=false 的情况下，
+  // 发消息、读历史全都正常，只是状态位不对。
+  // 所以这里**只记录、不 return**：真掉线时轮询自然收不到东西，代价只是几行日志；
+  // 一见 false 就停的旧逻辑会造成"进程活着却一条不收"。
   try {
     const st = await api('get_status', {});
     const online = st?.online === true;
     if (!online) {
       offlinePolls += 1;
-      // 只在第 1 次和之后每 60 次（约 2 分钟）提醒一次，避免刷屏
       if (offlinePolls === 1 || offlinePolls % 60 === 0) {
-        log(`[掉线] NapCat 报告 online=false（连续 ${offlinePolls} 次）——消息收不到，需要重新登录`);
+        log(
+          `[疑似掉线] get_status.online=false（连续 ${offlinePolls} 次）——继续轮询，若确实收不到再扫码`
+        );
       }
-      return;
-    }
-    if (offlinePolls > 0) {
-      log(`[恢复] NapCat 重新在线（掉线 ${offlinePolls} 次轮询）`);
+    } else if (offlinePolls > 0) {
+      log(`[恢复] NapCat 重新在线（之前 ${offlinePolls} 次报 false）`);
       offlinePolls = 0;
     }
   } catch (e) {
@@ -910,6 +922,7 @@ if (REPLAY_ID) {
 }
 
 log(`自动回复启动: 每 ${cfg.intervalSec}s，私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.join(',') || '无'}`);
+if (cfg.observeGroups.length) log(`只观察（不回话）的群: ${cfg.observeGroups.join(',')}`);
 log(`白名单: ${cfg.allow.join(',') || '不限'}；语音: ${cfg.allowVoice ? (cfg.ttsEndpoint || '未配置本地服务') : '关'}`);
 
 if (ONCE) {

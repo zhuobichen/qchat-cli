@@ -67,7 +67,12 @@ export function flattenMessage(message: unknown): string {
 }
 
 interface HistoryClient {
-  getGroupMsgHistory(groupId: number, messageSeq?: number, count?: number): Promise<{ messages: any[] }>;
+  getGroupMsgHistory(
+    groupId: number,
+    messageSeq?: number,
+    count?: number,
+    reverseOrder?: boolean,
+  ): Promise<{ messages: any[] }>;
 }
 
 export interface FetchOptions {
@@ -91,17 +96,28 @@ export async function fetchGroupMessages(
 
   let seq: number | undefined;
   let guard = 0;
+  let noProgress = 0;
 
   while (byId.size < limit && guard < 60) {
     guard += 1;
-    const batch = await client.getGroupMsgHistory(groupId, seq, Math.min(100, Math.max(1, limit - byId.size)));
+    const beforeSize = byId.size;
+    // 第二次起必须 reverseOrder，否则 NapCat 无视 message_seq、把最新页重复返回，
+    // 循环里全是重复消息 → byId 不再增长 → 停在第一页（这就是"只有 100 条"的由来）
+    const batch = await client.getGroupMsgHistory(
+      groupId,
+      seq,
+      Math.min(100, Math.max(1, limit - byId.size)),
+      seq !== undefined,
+    );
     const messages = batch?.messages ?? [];
     if (messages.length === 0) break;
+    const freshSeqs: number[] = [];
 
     for (const m of messages) {
       if (cutoff && m.time < cutoff) continue;
       const key = String(m.message_id ?? `${m.time}:${m.message_seq}`);
       if (byId.has(key)) continue;
+      if (typeof m.message_seq === 'number') freshSeqs.push(m.message_seq);
       byId.set(key, {
         id: key,
         groupId,
@@ -115,8 +131,22 @@ export async function fetchGroupMessages(
     }
 
     const oldest = messages.reduce((a, b) => (a.message_seq <= b.message_seq ? a : b));
-    if (oldest.message_seq === seq) break;
-    seq = oldest.message_seq;
+    // ⚠️ 不要用 `oldest.message_seq === seq` 当终止条件。
+    // 实测 NapCat 的窗口语义不是"严格早于 seq"：它会给一段围绕 seq 的区间，
+    // 于是连着两页的 oldestSeq 可能相同，但**再翻一页仍然会往前挪**。
+    // 早先按 seq 不变就 break，结果 711 条只拿到 280 条就停了。
+    // 正确的进度判据是"这一页有没有带来新消息"。
+    const grew = byId.size > beforeSize;
+    if (!grew) {
+      noProgress += 1;
+      if (noProgress >= 2) break;
+    } else {
+      noProgress = 0;
+    }
+    // 下一页的锚点要取"本页**新增**消息里最早的那条 seq"。
+    // 用整页最早的 seq 不行：NapCat 返回的窗口会包含大量本页之前已经见过的消息，
+    // 拿重复消息的 seq 去请下一页，它会再给你同一个窗口 —— 于是永远停在原地。
+    seq = freshSeqs.length ? Math.min(...freshSeqs) : oldest.message_seq;
     if (cutoff && oldest.time < cutoff) break;
   }
 
