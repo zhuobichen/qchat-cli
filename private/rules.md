@@ -372,3 +372,42 @@ get_group_msg_history  → 我发的那几条 **都在**，时间和内容都对
 **我的判断（未经证实，别当结论）**：今天掉线频率暴涨是**行为**造成的——
 换 NapCat 时杀 QQ 十几次 + 旧看门狗两分钟一轮。号的"风险分"被自己刷上去了，
 所以 23:20 扫码后只撑了 8 分钟。修法是**别再碰它**：一次登录、不重启、不多端。
+
+---
+
+## 11. 派活：写代码这类活丢给另一个会话干（2026-11-11 做好的）
+
+**为什么**：群里有人喊"帮我写个 X"，如果我在聊天这条会话里现写，几十个工具调用的输出
+全塞进上下文——聊到后面我就记不清谁说过什么。换个会干活，等于给这件事单独开一块脑子，
+干完只把结论拿回来。
+
+**工具**：`scripts/dispatch.mjs`
+
+```bash
+node scripts/dispatch.mjs new "<任务>" [--title 名字] [--notify group:<群号>|user:<QQ>] [--cwd 目录]
+node scripts/dispatch.mjs list                  # 谁在跑（▶ 标记）
+node scripts/dispatch.mjs tail <会话id>          # 它最后说了什么
+node scripts/dispatch.mjs say  <会话id> "改一下"  # 补需求
+node scripts/dispatch.mjs watch <会话id>         # 前台等它干完
+```
+
+**默认工作区是 `D:\qq助手`**（号主专门开的，别把活摊在聊天仓库或 DSH checkout 里）。
+要改就 `--cwd`。
+
+**通道**：DSH 的 supervisor 命令口子
+`POST http://127.0.0.1:3080/dsh-agent-supervisor/command`，
+op 只认 `list / start / send / tail / createSession / createWorkspace / ensureFullAccess`。
+
+**三个实测坑（别再走弯路）**：
+
+1. **`op:start` 自己就建会话**。传 `sessionId` 它不认，会另开一个新的——
+   你会以为在往老会话里派活，其实每次都开新坑。
+2. **`createSession` 建出来的是空壳**，`start` 也不会往里塞东西。别用它。
+3. **想控制干活目录，直接给 `start` 传 `cwd`**。
+   `createWorkspace` 的 `workspaceId` 并不会改变子会话的 cwd（实测子会话还在 DSH checkout 里）。
+
+**curl 的编码坑**：命令行 curl 在 GBK 代码页下发中文会变乱码（会话标题变成 `dispatch���ԻỰ`）。
+脚本里一律用 Node 的 `fetch`，别用 curl 传中文。
+
+**回报**：`--notify` 会起一个脱离本进程的守望进程，盯到子会话停下来，
+把它最后一段 agent 发言发到指定 QQ；结果写 `output/dispatch.log`（`exit=0` 才算发出去）。
