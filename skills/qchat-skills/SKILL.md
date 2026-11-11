@@ -57,7 +57,8 @@ node scripts/wiki-build.mjs --with-terms      # 生成 wiki（不加参数只出
 node scripts/refresh-knowledge.sh --crawl
 ```
 
-- 词库：`private/knowledge/terms.jsonl`（约 4600 条）
+- 词库：`private/knowledge/terms.jsonl`（约 4600 条），成页后在 `private/wiki/`（4576 条）
+- 查梗：`node scripts/meme-lookup.mjs <词>`（标题命中优先，其次正文；`--sticker` 查图，`--all` 两头查）
 - **`wiki-build` 不加 `--with-terms` 不生成词条页**——加了参数才算真进 wiki。
 - 采集源：`gengbaike.cn` 的站点 TLS 坏了，必须 `curl -sk`。
 
@@ -65,9 +66,10 @@ node scripts/refresh-knowledge.sh --crawl
 
 ```bash
 node scripts/send-sticker.mjs <意图>     # 笑 / 无语 / 看戏 / 吃 / 行 …
+node scripts/meme-lookup.mjs 无语 --sticker   # 先看候选 label 再决定发哪张
 ```
 
-963 张，`private/emoji-library/manifest.json` 里按 label 检索。
+963 张，`private/emoji-library/manifest.json` 里按 label 检索（现在是 172 张还是「待标」）。
 **坑**：库里的文件名后缀经常和真实格式不符（GIF/WEBP 写成 .png），按扩展名判断类型会错。
 
 ## 6. 生图 / 生视频（豆包桌面版）
