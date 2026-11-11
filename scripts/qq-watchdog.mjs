@@ -99,15 +99,25 @@ async function health() {
   };
 }
 
-/** 重启 NapCat：走 .launch-napcat.cmd（用 8.3 短路径，避开 cmd 的中文路径解码问题） */
+/**
+ * 重启 NapCat：启动器必须**脱离**本进程跑。
+ *
+ * 踩过的坑（2026-11-11 23:20 那次）：用 spawnSync 调 .launch-napcat.cmd，
+ * 而那个脚本内部会一直等到登录成功（最长 600 秒），于是看门狗被卡在
+ * spawnSync 里、直达 90 秒超时才被 kill——这一整段它什么都干不了，
+ * 连"要不要通知号主扫码"都没机会判断。
+ *
+ * 现在改成 Start-Process 起一个独立窗口的 cmd，调用立刻返回，
+ * 复查逻辑照常在 40 秒后跑；需要扫码时也就能按时把二维码推出去。
+ */
 function restartNapCat() {
   const shortProj = 'D:\\GITHUB~1\\ZHAOWE~1\\QCHAT-~1';
   const script = path.join(ROOT, '.launch-napcat.cmd');
   if (!fs.existsSync(script)) return { ok: false, error: '.launch-napcat.cmd 不存在' };
   try {
-    // 用 cmd /c 调短路径，避免中文路径在 GBK 代码页下被解错
-    const r = spawnSync('cmd', ['/c', `${shortProj}\\.launch-napcat.cmd`], { timeout: 90_000, encoding: 'utf8' });
-    return { ok: r.status === 0, out: (r.stdout ?? '').slice(0, 200), err: (r.stderr ?? '').slice(0, 200) };
+    const ps = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','${shortProj}\\.launch-napcat.cmd' -WindowStyle Hidden`;
+    const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { timeout: 20_000, encoding: 'utf8' });
+    return { ok: r.status === 0, out: 'detached', err: (r.stderr ?? '').slice(0, 200) };
   } catch (e) {
     return { ok: false, error: String(e.message).slice(0, 120) };
   }
@@ -174,8 +184,10 @@ async function tick() {
   log('正在重启 NapCat ...');
   const r = restartNapCat();
   csv({ ...h, action: r.ok ? 'restarted' : 'restart-failed:' + (r.error ?? r.err ?? '') });
-  log(r.ok ? '重启命令已发出，等 40 秒再确认' : `重启失败: ${r.error ?? r.err}`);
-  await new Promise((res) => setTimeout(res, 40_000));
+  log(r.ok ? '重启命令已发出，等 60 秒再确认' : `重启失败: ${r.error ?? r.err}`);
+  // 60 秒而不是 40：启动器要先拉起 QQ、再走到弹二维码大约要 30 秒，
+  // 40 秒去查往往正好卡在"还没开始登录"和"二维码已出"之间，判断不准。
+  await new Promise((res) => setTimeout(res, 60_000));
   const h2 = await health();
   log(`重启后：${h2.verdict}（${h2.detail}）`);
   csv({ ...h2, action: 'post-restart-check' });
