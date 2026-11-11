@@ -113,7 +113,8 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
 
   if (!sid) {
     // 第一次：用角色设定 + 第一条任务一起开个会话
-    const seed = `${lane.role}\n\n当前工作目录：${lane.cwd}\n\n第一件活：${task}`;
+    const where = lane.subdir ? `${lane.cwd}（产物放 ${lane.subdir}/ 子目录）` : lane.cwd;
+    const seed = `${lane.role}\n\n当前工作目录：${where}\n\n第一件活：${task}`;
     const r = await call('start', { text: seed, title: titleOverride || lane.title, cwd: lane.cwd });
     if (!r.ok) die(`开车道失败: ${JSON.stringify(r).slice(0, 160)}`);
     sid = r.sessionId;

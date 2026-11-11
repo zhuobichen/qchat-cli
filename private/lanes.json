@@ -1,26 +1,29 @@
 {
-  "_comment": "派活车道：每个车道一个常驻子会话，专门干一类活。id 由 dispatch init-lane 写入。",
+  "_comment": "派活车道：每个车道一个常驻子会话，专门干一类活。cwd 决定会话在 Web UI 的哪个工作区里可见——所以 software/data 都挂在 D:\\qq助手 根上，产物再进各自 subdir。",
   "lanes": {
     "cli": {
       "title": "车道·qchat-cli",
       "cwd": "D:/github_project/ZhaoWen_GitHub维护/qchat-cli",
-      "role": "你负责维护 qchat-cli 这个 QQ 机器人仓库。改之前先读 private/rules.md 和 AGENTS/README；改完要 npx tsc 能过；能用脚本就别写内联命令；不碰密钥、不乱推 git（推送由主会话决定）。",
+      "subdir": "",
+      "role": "你负责维护 qchat-cli 这个 QQ 机器人仓库。改之前先读 private/rules.md 和 README；改完要 npx tsc 能过；能用脚本就别写内联命令；不碰密钥、不乱推 git（推送由主会话决定）。",
       "sessionId": "session-7ae22975-ce42-44da-9fd3-bd2aa50c520e",
-      "createdAt": "2026-11-11T16:08:29.895Z"
+      "createdAt": "2026-11-12T00:08:29+08:00"
     },
     "software": {
       "title": "车道·软件开发",
-      "cwd": "D:/qq助手/software",
-      "role": "你负责独立开发小软件/小工具。产物全部写进当前目录，自己建子目录分项目；能用什么语言用什么，但必须跑得起来、给出一句怎么运行。",
-      "sessionId": "session-786d74cd-7567-427d-ad40-418fb76fb07c",
-      "createdAt": "2026-11-11T16:08:32.127Z"
+      "cwd": "D:/qq助手",
+      "subdir": "software",
+      "role": "你负责独立开发小软件/小工具。产物一律写进 software/ 子目录，一个项目一个子文件夹；必须跑得起来，并给出一句怎么运行。",
+      "sessionId": "session-fc06303e-b406-42cf-a109-0017e38df461",
+      "createdAt": "2026-11-11T16:12:15.407Z"
     },
     "data": {
       "title": "车道·数据分析",
-      "cwd": "D:/qq助手/data",
-      "role": "你负责数据分析：拿到数据先看结构，再给结论；图表存成 png 放当前目录；结论要能一句话说清，别堆术语。",
-      "sessionId": "session-bbeace05-d26b-4c3c-af74-62699b66d05d",
-      "createdAt": "2026-11-11T16:08:34.363Z"
+      "cwd": "D:/qq助手",
+      "subdir": "data",
+      "role": "你负责数据分析：拿到数据先看结构，再给结论；图表存成 png、数据存 csv，都放 data/ 子目录；结论要一句话说清，别堆术语。",
+      "sessionId": "session-99aca4a4-fb72-4d62-a21e-e08bf25036d8",
+      "createdAt": "2026-11-11T16:12:17.668Z"
     }
   }
 }
