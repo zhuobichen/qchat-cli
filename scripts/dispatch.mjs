@@ -126,6 +126,8 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
     lane.createdAt = new Date().toISOString();
     writeLanes(data);
     created = true;
+    const reg = registerSession(sid, lane.cwd);
+    if (process.env.DISPATCH_VERBOSE) console.log(`    登记到工作区: ${reg}`);
   } else {
     if (await isRunning(sid)) die(`车道上一个活还没干完（${sid}），等它收尾再派`);
     const r = await call('send', { sessionId: sid, text: task });
@@ -135,6 +137,40 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
   if (!notify) return { sid, created };
   const pid = spawnNotifier(sid, notify, titleOverride || lane.title);
   return { sid, created, notifyPid: pid };
+}
+
+/**
+ * 把会话登记进 Web UI 的工作区。
+ *
+ * 这一步是必须的，不是锦上添花：DSH 侧栏**不是**扫 cwd 分组的，
+ * 而是读 storages/workspace.json 里 `tables.workspaces[<id>].sessionIds` 这个白名单。
+ * 用 supervisor 建出来的会话不会自己写进这个数组，所以会话跑得好好的、
+ * sidebar 里却一条都看不到——今天为这个绕了三圈（先怪 cwd 正反斜杠，再怪缓存）。
+ *
+ * 匹配规则：workspace.path 与 cwd 逐字符相等（Windows 形式，反斜杠）。
+ */
+const DSH_HOME = process.env.DSH_HOME || 'D:\\github_project\\ZhaoWen_GitHub维护\\dsh\\home';
+const WORKSPACE_FILE = path.join(DSH_HOME, 'storages', 'workspace.json');
+
+function registerSession(sessionId, cwd) {
+  try {
+    if (!existsSync(WORKSPACE_FILE)) return 'no-workspace-file';
+    const raw = readFileSync(WORKSPACE_FILE, 'utf8');
+    const j = JSON.parse(raw);
+    const target = path.resolve(cwd);
+    const entry = Object.entries(j.tables?.workspaces || {}).find(([, w]) => path.resolve(w.path) === target);
+    if (!entry) return 'no-matching-workspace';
+    const [id, w] = entry;
+    w.sessionIds = w.sessionIds || [];
+    if (w.sessionIds.includes(sessionId)) return 'already';
+    w.sessionIds.unshift(sessionId);          // 新的放前面，侧栏排序也说新在前面
+    w.updatedAt = Date.now();
+    writeFileSync(`${WORKSPACE_FILE}.bak-dispatch`, raw, 'utf8');   // 手改这种活文件，先留一份
+    writeFileSync(WORKSPACE_FILE, JSON.stringify(j, null, 2), 'utf8');
+    return `registered:${id}`;
+  } catch (e) {
+    return `error:${e.message.slice(0, 60)}`;
+  }
 }
 
 async function main() {
@@ -202,6 +238,7 @@ async function main() {
     const started = await call('start', { text: task, title, ...(cwd ? { cwd: path.resolve(cwd) } : {}) });
     if (!started.ok) die(`派活失败: ${JSON.stringify(started).slice(0, 160)}`);
     const sid = started.sessionId;
+    registerSession(sid, cwd);
 
     let note = '';
     if (notify) {
