@@ -179,6 +179,20 @@ node dist/cli.js napcat start -q <uin>
 
 ---
 
+## 15. 派活（把写代码的活丢给独立会话）
+
+```bash
+node scripts/dispatch.mjs lanes                    # 三条车道谁在跑
+node scripts/dispatch.mjs new "<任务>" --lane cli   # cli / software / data
+node scripts/dispatch.mjs new "<任务>" --notify group:913807639   # 干完自动回报
+node dist/cli.js dispatch lanes                    # 同一个东西的工具层入口
+```
+
+车道定义在 `private/lanes.json`；默认工作区 `D:\qq助手`。
+
+**最关键的坑**：建会话必须用 `createSession { workspaceId }`，不能用 `start { cwd }`——
+前者会 `attachSession` 进工作区（侧栏看得见），后者不会。详见 `private/rules.md` 第 11 节。
+
 ## 判断该不该用哪个
 
 | 想干的事 | 用哪个 |
