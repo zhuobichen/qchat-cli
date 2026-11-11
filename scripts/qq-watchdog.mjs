@@ -121,6 +121,34 @@ function csv(rec) {
   fs.appendFileSync(CSV, [new Date().toISOString(), esc(rec.verdict), esc(rec.detail), esc(rec.action)].join(',') + '\n', 'utf8');
 }
 
+/**
+ * 重启后还是要扫码 → 主动把二维码推到号主那儿。
+ *
+ * 为什么要做：重启只能救"进程挂了"，救不了"登录失效"。
+ * 而登录失效以后，如果没人知道要扫码，这号就一直躺着——
+ * 19:49 那次就是这么白白断了半小时，靠人工发现。
+ */
+const QR_SRC = path.join(os.homedir(), '.qchat-cli', 'NapCat.Shell', 'napcat', 'cache', 'qrcode.png');
+const QR_OUT = path.join(ROOT, 'output', 'login-qr.png');
+const OWNER = 1473517806;
+
+function notifyNeedScan() {
+  if (!fs.existsSync(QR_SRC)) return false;
+  try {
+    fs.copyFileSync(QR_SRC, QR_OUT);
+  } catch (e) {
+    log(`复制二维码失败: ${e.message}`);
+    return false;
+  }
+  const shortProj = 'D:\\GITHUB~1\\ZHAOWE~1\\QCHAT-~1';
+  const send = (args) =>
+    spawnSync('cmd', ['/c', `cd /d ${shortProj} && node dist\\cli.js ${args}`], { timeout: 60_000, encoding: 'utf8' });
+  send(`say user:${OWNER} "QQ 掉线了，要重新扫码。二维码在下面，扫完自己会连上。"`);
+  send(`pic user:${OWNER} output/login-qr.png`);
+  log('已把二维码私聊推给号主');
+  return true;
+}
+
 async function tick() {
   const h = await health();
   if (h.verdict === 'healthy') {
@@ -133,6 +161,7 @@ async function tick() {
     } else {
       console.log(`[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] 健康（${h.detail}）`);
     }
+    tick.fails = 0;
     return;
   }
 
@@ -150,6 +179,16 @@ async function tick() {
   const h2 = await health();
   log(`重启后：${h2.verdict}（${h2.detail}）`);
   csv({ ...h2, action: 'post-restart-check' });
+
+  if (h2.verdict !== 'healthy') {
+    tick.fails = (tick.fails ?? 0) + 1;
+    // 重启救不了的事只有一件：登录失效。这时候再重启只会越搞越乱
+    // （多开/反复拉起会让 QQ 服务端判定异常，反而更容易被踢）。
+    if (tick.fails <= 2) notifyNeedScan();
+    else log(`连续 ${tick.fails} 次没起来，不再自动重启（避免把登录态搞坏），等人工处理`);
+  } else {
+    tick.fails = 0;
+  }
 }
 
 async function main() {
@@ -161,7 +200,9 @@ async function main() {
       log(`体检出错: ${e.message}`);
     }
     if (DRY || ONCE) return;
-    await new Promise((r) => setTimeout(r, INTERVAL));
+    // 连着重启不起来就把间隔拉到 10 分钟：这时候缺的是人，不是次数
+    const wait = (tick.fails ?? 0) > 2 ? Math.max(INTERVAL, 600_000) : INTERVAL;
+    await new Promise((r) => setTimeout(r, wait));
   }
 }
 
