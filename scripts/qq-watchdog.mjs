@@ -61,17 +61,40 @@ function log(msg) {
   }
 }
 
-/** 一次判定：返回 healthy / half-dead / down */
+/**
+ * 一次判定：返回 healthy / half-dead / down
+ *
+ * ⚠️ 判据不能只看「请求有没有报错」。2026-11-11 实测两个反例：
+ *   1. get_friend_list 请求成功但返回空数组 —— 这个号固定有 2 个好友（号主和自己），
+ *      变成 0 说明账号数据层已经挂了，可当时判成了 healthy，于是没重启，后来真掉线。
+ *   2. get_group_member_info 返回 null —— 群成员拉不到，说明 NTQQ 内核的事件回调断了
+ *      （日志里是 EventChecker Failed / fetchUserDetailInfo Timeout）。
+ * 这两条都是「请求成功但拿不到数据」，比报错更隐蔽。
+ */
 async function health() {
   const login = await api('get_login_info');
   if (!login.ok) return { verdict: 'down', detail: 'get_login_info 失败' };
+
   const friends = await api('get_friend_list', {}, 8000);
   if (friends.error) return { verdict: 'half-dead', detail: `friend_list ${friends.error}` };
+  const friendCount = (friends.data ?? []).length;
+
+  // 好友列表空 = 数据层挂了（本号固定有 2 个：号主 + 自己）
+  if (friendCount === 0) {
+    return { verdict: 'half-dead', detail: 'friend_list 返回空（账号数据层已挂）' };
+  }
+
+  // 群成员拉不到 = NTQQ 内核事件回调断了
+  const member = await api('get_group_member_info', { group_id: 913807639, user_id: 1473517806 }, 8000);
+  if (member.ok && !member.data) {
+    return { verdict: 'half-dead', detail: 'group_member_info 返回 null（内核回调可能已断）' };
+  }
+
   const hist = await api('get_group_msg_history', { group_id: 913807639, count: 1 });
   const ts = hist.ok ? (hist.data?.messages ?? [])[0]?.time * 1000 : 0;
   return {
     verdict: 'healthy',
-    detail: `friends=${(friends.data ?? []).length}`,
+    detail: `friends=${friendCount}`,
     latestMessageAgeMin: ts ? Math.round((Date.now() - ts) / 60000) : null,
   };
 }

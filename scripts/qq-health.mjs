@@ -103,9 +103,12 @@ async function main() {
     ? { count: (friends.data ?? []).length, ms: friends.ms }
     : { error: friends.error, ms: friends.ms };
 
-  const hist = await api('get_group_msg_history', { group_id: GROUP, count: 1 });
+  // count 小的时候 NapCat 会返回空数组（实测 1/2 空、5 才有内容）（不是"没消息"），最少要 2 条才有内容。
+  // 踩过：这一条让体检在明明有消息时也报「群消息为空」，看着像链路瘫了。
+  const hist = await api('get_group_msg_history', { group_id: GROUP, count: 10, reverseOrder: true });
   if (hist.ok) {
-    const m = (hist.data?.messages ?? [])[0];
+    const list = (hist.data?.messages ?? []).slice().sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+    const m = list[0];
     const ts = m ? m.time * 1000 : 0;
     r.checks.latestMessage = ts
       ? { at: new Date(ts).toISOString(), ageSec: Math.round((Date.now() - ts) / 1000) }
@@ -117,7 +120,12 @@ async function main() {
   const status = await api('get_status');
   r.checks.onlineFlag = status.ok ? status.data?.online : undefined;
 
-  r.checks.watcherLogAgeSec = logAge(path.join(process.cwd(), 'output', 'qq-watch.log'));
+  // 监视器可能跑在 v2（独立 state/log）上，取两个日志里更新的那个，
+  // 不然会拿一份早就没人写的旧日志算"多久没动"。
+  const ages = ['qq-watch.log', 'qq-watch-v2.log']
+    .map((f) => logAge(path.join(process.cwd(), 'output', f)))
+    .filter((n) => n !== null);
+  r.checks.watcherLogAgeSec = ages.length ? Math.min(...ages) : null;
 
   // 判定：不看 online 标志，看 friend_list 通不通
   if (r.checks.friendList?.error) {

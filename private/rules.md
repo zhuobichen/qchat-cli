@@ -210,3 +210,49 @@ MCP 也有：`hex_player_stats` / `hex_team_report` / `hex_augment`。
 - 死亡数不能单独当罪证——要和伤害占比、参团率一起看，
   否则「死最多的人」经常是承伤最高的那个，一句话就被反驳
 - 重开局（<5 分钟）不评
+
+---
+
+## 7. 戳一戳需要 packetBackend，跟发消息是两条独立的路（2026-11-11 修好）
+
+**症状**：`send_poke` / `friend_poke` / `group_poke` 全部返回
+
+```
+packetBackend不可用 ... PacketBackend 不支持当前QQ版本架构：9.9.33-52230
+```
+
+而同一时刻发消息、读历史、拉好友列表全正常——**所以这个坏不会自己冒出来**，
+只有真去戳一次才知道。
+
+**根因**：戳一戳走 QQ 的 packet 层（NapCat 的 `native/packet/MoeHoo.win32.x64.node`），
+这层是按 QQ 版本号的包结构编译的。10-25 QQ 升到 `9.9.33-52230`，
+而 NapCat **4.18.1** 的 packet 模块不认这个版本，于是整块功能关掉。
+
+**修法**：整目录换成 **4.18.42**（`napcat.mjs` 里能搜到 `9.9.33-52230`，
+`native/packet` 也是新编译的）。
+
+**关键：不能只换 `napcat.mjs`。** 试过一次，只替换主文件、留着旧的
+`NapCatWinBootMain.exe` / `NapCatWinBootHook.dll`，结果 QQ 直接起不来。
+壳、hook DLL、packet 原生模块是配套的，要一起换。
+
+**做法**（`.swap-napcat-full.cmd`，失败自动回滚）：
+
+```
+旧目录改名 napcat.bak-4181 → 新目录整个铺上去 → config/ 和 plugins/ 从备份盖回来
+登录态在 QQ 自己的数据目录里，换壳不用重新扫码
+```
+
+**验证**：
+
+```bash
+qce poke user:1473517806                    # 私聊戳
+qce poke group:913807639 1473517806         # 群里戳
+```
+
+**顺带发现（体检脚本的两个假警报）**：
+
+1. `get_group_msg_history` 的 `count` 太小会返回**空数组**，不是"没消息"。
+   实测 `1`、`2` 都是空，`5` 才有内容 → 体检固定用 `count: 10`。
+   这一条让体检在明明有消息时报「群消息为空」，看着像读接口瘫了。
+2. 「监视器日志 N 秒前」写死了 `output/qq-watch.log`，但实际在跑的是
+   `qq-watch-v2.log`，拿旧日志算年龄会误报 → 改成取两份里更新的那份。

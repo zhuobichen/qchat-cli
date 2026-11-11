@@ -145,6 +145,33 @@ export function toolsCommand(program: Command): void {
       }
     });
 
+  // ── poke：戳一戳 ──────────────────────────────────────
+  //
+  // 为什么以前戳不了：戳一戳走 QQ 的 packet 层（NapCat 的 PacketBackend），
+  // 4.18.1 只认旧版 QQ 的包结构，QQ 升到 9.9.33-52230 后就报
+  // 「PacketBackend 不支持当前QQ版本架构」。这错只在调用时暴露，
+  // 平时发消息、读历史都正常，所以一直没被发现。换成 4.18.42 才好。
+  program
+    .command('poke <target> [user]')
+    .description('戳一戳。群聊写 group:<群号> <QQ号>，私聊写 user:<QQ号>')
+    .action(async (targetRaw: string, user?: string) => {
+      try {
+        const target = parseTarget(targetRaw);
+        const client = authManager.getClient();
+        if (target.kind === 'group') {
+          const uid = Number(String(user || '').trim());
+          if (!uid) throw new Error('群戳要给 QQ 号：qce poke group:<群号> <QQ号>');
+          await client.call('group_poke', { group_id: target.id, user_id: uid });
+          report(true, `poke → group:${target.id}`, `戳了 ${uid}`);
+        } else {
+          await client.call('friend_poke', { user_id: target.id });
+          report(true, `poke → user:${target.id}`, '戳了');
+        }
+      } catch (e: any) {
+        report(false, 'poke', e?.message || String(e));
+      }
+    });
+
   // ── see：看图 ─────────────────────────────────────────
   program
     .command('see <image>')

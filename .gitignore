@@ -95,3 +95,9 @@ private/wiki/
 .px-test/
 # 运行时状态（multi-instance）
 private/qq-watch-v2.state.json
+
+# NapCat 换壳用的整包与备份（几百 MB，绝不入库）
+_napcat-v2/
+_napcat-backup-*/
+_napcat-dl/
+_*.bak/
