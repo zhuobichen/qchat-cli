@@ -115,7 +115,11 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
     // 第一次：用角色设定 + 第一条任务一起开个会话
     const where = lane.subdir ? `${lane.cwd}（产物放 ${lane.subdir}/ 子目录）` : lane.cwd;
     const seed = `${lane.role}\n\n当前工作目录：${where}\n\n第一件活：${task}`;
-    const r = await call('start', { text: seed, title: titleOverride || lane.title, cwd: lane.cwd });
+    // cwd 一定要做成 Windows 原生形式（反斜杠）。
+    // 踩过：传 "D:/qq助手"（正斜杠）时会话照跑，但 identity.cwd 存成 "D:/qq助手"，
+    // 而 workspace.json 里登记的是 "D:\\qq助手"——字符串不相等，Web UI 侧栏就归不进那个工作区，
+    // 看起来像"会话没生成"。path.resolve 在 Windows 上正好给反斜杠。
+    const r = await call('start', { text: seed, title: titleOverride || lane.title, cwd: path.resolve(lane.cwd) });
     if (!r.ok) die(`开车道失败: ${JSON.stringify(r).slice(0, 160)}`);
     sid = r.sessionId;
     lane.sessionId = sid;
