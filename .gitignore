@@ -101,3 +101,6 @@ _napcat-v2/
 _napcat-backup-*/
 _napcat-dl/
 _*.bak/
+
+# 运行时状态（今晚凑人计数这类临时表）
+private/tonight-roster.json

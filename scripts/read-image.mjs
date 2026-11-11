@@ -106,9 +106,15 @@ const ask = arg('ask', '');
 let out;
 if (route === 'text') {
   // ⚠️ ocr.py 是 Python，不能再拿 process.execPath（node）去跑它
-  const r = spawnSync('python', [path.join(ROOT, 'scripts', 'ocr.py'), abs], {
+  //
+  // 编码坑（2026-11-11 踩的）：Python 在 Windows 上往管道输出时按 locale 编码
+  // （cp936/GBK）写字节，Node 这边按 UTF-8 解，中文全变乱码
+  // ——「ʶ�� 3 �У�」那种，而且它长得"像有内容"，会一路被当成图片描述发进群。
+  // 两个都设：PYTHONIOENCODING 管 Python 自己，-X utf8 兜底子进程。
+  const r = spawnSync('python', ['-X', 'utf8', path.join(ROOT, 'scripts', 'ocr.py'), abs], {
     encoding: 'utf8',
     timeout: 180000,
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
   });
   out = ((r.stdout || '') + (r.stderr || '')).trim();
   // OCR 出空或者只有一两个字符 → 说明这图根本没字，改走视觉
