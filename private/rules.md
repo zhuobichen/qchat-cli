@@ -432,7 +432,20 @@ node scripts/dispatch.mjs reset-lane software         # 聊满了/跑偏了就�
 | `software` | `D:\qq助手\software` | 别人喊写的小软件/工具 |
 | `data` | `D:\qq助手\data` | 数据分析、出图 |
 
-**机制**：车道里已有会话 → 用 `op:send` 接着聊；没有 → 用 `op:start` 开一个
+**机制（2026-11-12 绕了四圈才对齐，别再改错方向）**：
+
+| 你想干的事 | 正确的 op |
+|---|---|
+| 新建一个**能在侧栏看见**的会话 | `createSession { workspaceId, title }` |
+| 往里投任务 / 接着聊 | `send { sessionId, text }` |
+| ❌ 别用 | `start {}` —— 它只传 cwd，`controller.create` 不会 `attachSession`，会话能跑但侧栏没有 |
+
+**根因**：DSH 侧栏显示的是 `storages/workspace.json` 里 `tables.workspaces[<id>].sessionIds`
+这个白名单，不是按目录扫。而**那个文件归 DSH 进程所有**——我手工往里加 id，
+程序下次一写就覆盖（实测被冲掉两次）。唯一能让它自己登记的路子，就是
+`controller.create({ workspaceId })` 内部调 `workspace.attachSession()`。
+
+**机制**：车道里已有会话 → 用 `op:send` 接着聊；没有 → 用 `op:start` 开一个（seed 里带角色 + 目录 + 第一件活）
 （seed 里带角色 + 目录 + 第一件活）。所以**别在车道上手动 `start`**，那会另开一个、把登记表搞乱。
 
 **唯一要盯的事**：车道会话会越聊越满，满了就 `reset-lane`。它不是无限上下文。

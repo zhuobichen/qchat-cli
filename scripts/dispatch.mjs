@@ -112,22 +112,27 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
   }
 
   if (!sid) {
-    // 第一次：用角色设定 + 第一条任务一起开个会话
+    // 第一次：先 createSession(workspaceId) 把会话挂进工作区，再把角色+第一件活 send 进去。
+    // 为什么不用 op:start：它只传 cwd，controller.create 不会 attachSession，
+    // 结果就是"会话跑得好好的、侧栏里没有"。
     const where = lane.subdir ? `${lane.cwd}（产物放 ${lane.subdir}/ 子目录）` : lane.cwd;
-    const seed = `${lane.role}\n\n当前工作目录：${where}\n\n第一件活：${task}`;
-    // cwd 一定要做成 Windows 原生形式（反斜杠）。
-    // 踩过：传 "D:/qq助手"（正斜杠）时会话照跑，但 identity.cwd 存成 "D:/qq助手"，
-    // 而 workspace.json 里登记的是 "D:\\qq助手"——字符串不相等，Web UI 侧栏就归不进那个工作区，
-    // 看起来像"会话没生成"。path.resolve 在 Windows 上正好给反斜杠。
-    const r = await call('start', { text: seed, title: titleOverride || lane.title, cwd: path.resolve(lane.cwd) });
-    if (!r.ok) die(`开车道失败: ${JSON.stringify(r).slice(0, 160)}`);
-    sid = r.sessionId;
+    const ws = findWorkspaceId(lane.cwd);
+    const createdRes = await call('createSession', {
+      title: titleOverride || lane.title,
+      ...(ws ? { workspaceId: ws.id } : { cwd: path.resolve(lane.cwd) }),
+    });
+    if (!createdRes.ok) die(`开车道失败: ${JSON.stringify(createdRes).slice(0, 160)}`);
+    sid = createdRes.sessionId;
+
+    const seed = `${lane.role}\n\n当前工作目录：${where}${ws ? '' : '（注意：这个目录没登记成工作区）'}\n\n第一件活：${task}`;
+    const sent = await call('send', { sessionId: sid, text: seed });
+    if (!sent.ok) die(`投递失败: ${JSON.stringify(sent).slice(0, 160)}`);
+
     lane.sessionId = sid;
     lane.createdAt = new Date().toISOString();
     writeLanes(data);
     created = true;
-    const reg = registerSession(sid, lane.cwd);
-    if (process.env.DISPATCH_VERBOSE) console.log(`    登记到工作区: ${reg}`);
+    if (process.env.DISPATCH_VERBOSE) console.log(`    工作区: ${ws ? ws.title : '（无匹配，用了 cwd）'}`);
   } else {
     if (await isRunning(sid)) die(`车道上一个活还没干完（${sid}），等它收尾再派`);
     const r = await call('send', { sessionId: sid, text: task });
@@ -140,37 +145,29 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
 }
 
 /**
- * 把会话登记进 Web UI 的工作区。
+ * 找 workspaceId（只读，绝不写 workspace.json）。
  *
- * 这一步是必须的，不是锦上添花：DSH 侧栏**不是**扫 cwd 分组的，
- * 而是读 storages/workspace.json 里 `tables.workspaces[<id>].sessionIds` 这个白名单。
- * 用 supervisor 建出来的会话不会自己写进这个数组，所以会话跑得好好的、
- * sidebar 里却一条都看不到——今天为这个绕了三圈（先怪 cwd 正反斜杠，再怪缓存）。
+ * 血泪结论（2026-11-12，绕了四圈才对齐）：
+ *   · 侧栏显示的是 workspace.json 里 tables.workspaces[<id>].sessionIds 白名单，不是扫目录分组
+ *   · 但那个文件**归 DSH 进程所有**：我手工往里加 id，程序下一次写就覆盖掉（实测被冲掉两次）
+ *   · 唯一能让它自己登记的办法，是 createSession 带 workspaceId：
+ *     controller.create({workspaceId}) 内部会调 workspace.attachSession()，白名单由程序维护
  *
- * 匹配规则：workspace.path 与 cwd 逐字符相等（Windows 形式，反斜杠）。
+ * 所以正确顺序是：cwd → findWorkspaceId → createSession(workspaceId) → send(任务)。
+ * 千万别再手改 workspace.json。
  */
-const DSH_HOME = process.env.DSH_HOME || 'D:\\github_project\\ZhaoWen_GitHub维护\\dsh\\home';
+const DSH_HOME = process.env.DSH_HOME || path.join('D:', 'github_project', 'ZhaoWen_GitHub维护', 'dsh', 'home');
 const WORKSPACE_FILE = path.join(DSH_HOME, 'storages', 'workspace.json');
 
-function registerSession(sessionId, cwd) {
+function findWorkspaceId(cwd) {
   try {
-    if (!existsSync(WORKSPACE_FILE)) return 'no-workspace-file';
-    const raw = readFileSync(WORKSPACE_FILE, 'utf8');
-    const j = JSON.parse(raw);
-    const target = path.resolve(cwd);
-    const entry = Object.entries(j.tables?.workspaces || {}).find(([, w]) => path.resolve(w.path) === target);
-    if (!entry) return 'no-matching-workspace';
-    const [id, w] = entry;
-    w.sessionIds = w.sessionIds || [];
-    if (w.sessionIds.includes(sessionId)) return 'already';
-    w.sessionIds.unshift(sessionId);          // 新的放前面，侧栏排序也说新在前面
-    w.updatedAt = Date.now();
-    writeFileSync(`${WORKSPACE_FILE}.bak-dispatch`, raw, 'utf8');   // 手改这种活文件，先留一份
-    writeFileSync(WORKSPACE_FILE, JSON.stringify(j, null, 2), 'utf8');
-    return `registered:${id}`;
-  } catch (e) {
-    return `error:${e.message.slice(0, 60)}`;
-  }
+    const j = JSON.parse(readFileSync(WORKSPACE_FILE, 'utf8'));
+    const target = path.resolve(cwd).toLowerCase();
+    for (const [id, w] of Object.entries(j.tables?.workspaces || {})) {
+      if (path.resolve(w.path).toLowerCase() === target) return { id, title: w.title };
+    }
+  } catch { /* 读不到就当没有，退回按 cwd 建 */ }
+  return null;
 }
 
 async function main() {
@@ -238,7 +235,6 @@ async function main() {
     const started = await call('start', { text: task, title, ...(cwd ? { cwd: path.resolve(cwd) } : {}) });
     if (!started.ok) die(`派活失败: ${JSON.stringify(started).slice(0, 160)}`);
     const sid = started.sessionId;
-    registerSession(sid, cwd);
 
     let note = '';
     if (notify) {
