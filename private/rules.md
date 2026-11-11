@@ -411,3 +411,28 @@ op 只认 `list / start / send / tail / createSession / createWorkspace / ensure
 
 **回报**：`--notify` 会起一个脱离本进程的守望进程，盯到子会话停下来，
 把它最后一段 agent 发言发到指定 QQ；结果写 `output/dispatch.log`（`exit=0` 才算发出去）。
+
+### 11.1 车道：常驻的子会话（2026-11-12 建的）
+
+不用每次派活都开新会话——同一类活进同一个「车道」，它的上下文能接着用：
+
+```bash
+node scripts/dispatch.mjs lanes                       # 三个车道谁在跑
+node scripts/dispatch.mjs new "<活>" --lane cli       # 进 qchat-cli 维护道
+node scripts/dispatch.mjs new "<活>" --lane software  # 进软件开发道
+node scripts/dispatch.mjs new "<活>" --lane data      # 进数据分析道
+node scripts/dispatch.mjs reset-lane software         # 聊满了/跑偏了就重开
+```
+
+车道定义在 `private/lanes.json`（id、目录、角色设定三样）。加车道就加一条 JSON。
+
+| 车道 | 目录 | 干什么 |
+|---|---|---|
+| `cli` | `D:\github_project\...\qchat-cli` | 改这个仓库本身 |
+| `software` | `D:\qq助手\software` | 别人喊写的小软件/工具 |
+| `data` | `D:\qq助手\data` | 数据分析、出图 |
+
+**机制**：车道里已有会话 → 用 `op:send` 接着聊；没有 → 用 `op:start` 开一个
+（seed 里带角色 + 目录 + 第一件活）。所以**别在车道上手动 `start`**，那会另开一个、把登记表搞乱。
+
+**唯一要盯的事**：车道会话会越聊越满，满了就 `reset-lane`。它不是无限上下文。

@@ -20,11 +20,12 @@
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENDPOINT = process.env.DSH_SUPERVISOR_URL || 'http://127.0.0.1:3080/dsh-agent-supervisor/command';
 const KEY = process.env.DSH_SUPERVISOR_KEY || '';
+const LANES_FILE = path.join(ROOT, 'private', 'lanes.json');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -33,7 +34,16 @@ function flag(name, def = '') {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 ? (argv[i + 1] ?? def) : def;
 }
-const positional = argv.slice(1).filter((a, i, arr) => !a.startsWith('--') && !(i > 0 && arr[i - 1] === '--title') && !(i > 0 && arr[i - 1] === '--notify') && !(i > 0 && arr[i - 1] === '--limit'));
+const positional = argv.slice(1).filter((a, i, arr) => !a.startsWith('--') && !(i > 0 && arr[i - 1] === '--title') && !(i > 0 && arr[i - 1] === '--notify') && !(i > 0 && arr[i - 1] === '--limit') && !(i > 0 && arr[i - 1] === '--lane') && !(i > 0 && arr[i - 1] === '--cwd'));
+
+/** 车道登记表：一个车道 = 一个常驻子会话 + 一个固定目录 + 一段角色设定 */
+function readLanes() {
+  if (!existsSync(LANES_FILE)) return { lanes: {} };
+  return JSON.parse(readFileSync(LANES_FILE, 'utf8'));
+}
+function writeLanes(data) {
+  writeFileSync(LANES_FILE, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
 
 async function call(op, extra = {}) {
   const res = await fetch(ENDPOINT, {
@@ -79,10 +89,55 @@ function spawnNotifier(sessionId, target, title) {
   return child.pid;
 }
 
+/**
+ * 把一条活送进某个车道。
+ * 车道里有活的会话就 `send` 进去（它自己会接着干），没有就先 `start` 建一个。
+ * 注意 op:start 一定会新建会话，所以只有空车道才用它。
+ */
+async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' } = {}) {
+  const data = readLanes();
+  const lane = data.lanes[laneName];
+  if (!lane) die(`没有这个车道: ${laneName}（现有: ${Object.keys(data.lanes).join(' / ')}）`);
+
+  let sid = lane.sessionId || '';
+  let created = false;
+
+  // 车道会话没了/被删了，就当没有
+  if (sid) {
+    const j = await call('list');
+    if (!(j.sessions || []).some((s) => s.sessionId === sid)) {
+      sid = '';
+      lane.sessionId = '';
+    }
+  }
+
+  if (!sid) {
+    // 第一次：用角色设定 + 第一条任务一起开个会话
+    const seed = `${lane.role}\n\n当前工作目录：${lane.cwd}\n\n第一件活：${task}`;
+    const r = await call('start', { text: seed, title: titleOverride || lane.title, cwd: lane.cwd });
+    if (!r.ok) die(`开车道失败: ${JSON.stringify(r).slice(0, 160)}`);
+    sid = r.sessionId;
+    lane.sessionId = sid;
+    lane.createdAt = new Date().toISOString();
+    writeLanes(data);
+    created = true;
+  } else {
+    if (await isRunning(sid)) die(`车道上一个活还没干完（${sid}），等它收尾再派`);
+    const r = await call('send', { sessionId: sid, text: task });
+    if (!r.ok) die(`派活失败: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+
+  if (!notify) return { sid, created };
+  const pid = spawnNotifier(sid, notify, titleOverride || lane.title);
+  return { sid, created, notifyPid: pid };
+}
+
 async function main() {
   if (!cmd || cmd === 'help' || cmd === '--help') {
     console.log(`用法:
-  node scripts/dispatch.mjs new "<任务>" [--title 名字] [--notify group:<群号>|user:<QQ>]
+  node scripts/dispatch.mjs lanes                          # 看有哪些车道、谁在跑
+  node scripts/dispatch.mjs new "<任务>" [--lane cli|software|data] [--title 名字] [--notify group:<群号>|user:<QQ>] [--cwd 目录]
+  node scripts/dispatch.mjs reset-lane <车道>              # 车道会话聊乱了/满了，重开一个
   node scripts/dispatch.mjs list [--limit N]
   node scripts/dispatch.mjs tail <会话id> [--limit N]
   node scripts/dispatch.mjs say <会话id> "<补充要求>"
@@ -91,12 +146,48 @@ async function main() {
     return;
   }
 
+  // ── 车道 ────────────────────────────────────────────
+  if (cmd === 'lanes') {
+    const data = readLanes();
+    const live = await call('list');
+    const byId = new Map((live.sessions || []).map((s) => [s.sessionId, s]));
+    for (const [name, lane] of Object.entries(data.lanes)) {
+      const s = lane.sessionId ? byId.get(lane.sessionId) : null;
+      const state = !lane.sessionId ? '空（还没开）' : !s ? '会话已消失' : s.running ? '▶ 正在干' : '空闲';
+      console.log(`${name.padEnd(9)} ${state.padEnd(12)} ${lane.sessionId || '-'}`);
+      console.log(`          ${lane.cwd}`);
+    }
+    return;
+  }
+
+  if (cmd === 'reset-lane') {
+    const name = positional[0];
+    const data = readLanes();
+    if (!data.lanes[name]) die(`没有这个车道: ${name}`);
+    data.lanes[name].sessionId = '';
+    data.lanes[name].createdAt = '';
+    writeLanes(data);
+    console.log(`ok  ${name} 车道已清空，下次派活会开新会话`);
+    return;
+  }
+
   if (cmd === 'new') {
     const task = positional[0];
     if (!task) die('任务不能为空');
+    const lane = flag('lane');
     const title = flag('title') || task.slice(0, 18);
     const notify = flag('notify');
-    // 默认干在 D:\qq助手——号主专门开的工作区，别把活摊在聊天仓库或者 DSH checkout 里
+
+    // 指定车道：进那个车道的常驻会话，上下文能接着用
+    if (lane) {
+      const r = await dispatchToLane(lane, task, { notify, titleOverride: flag('title') });
+      console.log(`ok  已派活 → ${r.sid}${r.created ? '（车道新开会话）' : '（接着原来的会话）'}`);
+      console.log(`    车道: ${lane}`);
+      if (notify) console.log(`    干完回报 → ${notify}${r.notifyPid ? `（守望进程 ${r.notifyPid}）` : ''}`);
+      return;
+    }
+
+    // 没指定车道：一次性散活，干完就散（默认工作区 D:\qq助手）
     const cwd = flag('cwd', 'D:/qq助手');
 
     // 三条实测结论，别再走弯路：
