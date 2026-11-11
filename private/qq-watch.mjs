@@ -592,7 +592,9 @@ async function runOnce() {
     lines.push('');
     // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
     // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
-    lines.push('回复前先读 private/personas/global.md（178 行）——那是我说话的样子，不是参考资料。不读就别开口。');
+    lines.push('回复前先读 private/personas/global.md ——那是我说话的样子，不是参考资料。不读就别开口。');
+    // 行数写死过一次，人格一改就变成假情报（写 178 行时实际已经 198 行），所以只给路径。
+    lines.push('（要发弱智吧那种段子，再打开仓库根目录的 identity_弱智吧.md，别凭印象现编。）');
     lines.push(head.kind === 'private'
       ? '要回就回，不想回可以 skip。'
       : (batch.some((m) => m.mentioned)
