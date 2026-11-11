@@ -1,0 +1,6 @@
+{
+  "name": "carl-motion-huashu-portraits",
+  "private": true,
+  "description": "Egyptian mural, Van Gogh and Monet scenes on the huashu-art-motion painting library",
+  "dependencies": { "@napi-rs/canvas": "0.1.65" }
+}

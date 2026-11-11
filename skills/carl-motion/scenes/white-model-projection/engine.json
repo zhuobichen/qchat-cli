@@ -1,0 +1,35 @@
+{
+  "slug": "white-model-projection",
+  "styles": [
+    "S28"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "Pillow"
+    ],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/HelveticaNeue.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A white city model lit by a video projector shows an old factory turning into a public library, with a walkable-reach layer spreading outward.",
+  "limits_en": [
+    "The city uses procedural boxes (flat, gabled, tower plus rooftop plant), not irregular footprints from real building data; single buildings are simpler than real open data.",
+    "Projection shadows come from EEVEE shadow maps, not path tracing; at closest approach the seams under eaves are softer than Cycles.",
+    "At 32 samples the dark areas show slight grain, so uniform grain was added in post to unify the texture.",
+    "The projector start-up flicker (frames 31-35) is a designed effect and was not counted as a jump.",
+    "The walkable-reach layer has only three bands, not a continuous gradient."
+  ]
+}

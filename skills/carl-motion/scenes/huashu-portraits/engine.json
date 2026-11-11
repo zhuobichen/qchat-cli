@@ -1,0 +1,30 @@
+{
+  "slug": "huashu-portraits",
+  "styles": [
+    "S22",
+    "S23",
+    "S24"
+  ],
+  "stack": "node",
+  "entry": "./render.sh <work_dir> <s22_egypt|s23_wheat|s24_bridge>",
+  "requires": {
+    "python": null,
+    "pip": [],
+    "blender": null,
+    "node": ">=20",
+    "binaries": [
+      "ffmpeg"
+    ],
+    "npm": [
+      "@napi-rs/canvas@0.1.65"
+    ]
+  },
+  "fonts": [],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Three painter-style portraits (Egyptian mural, Van Gogh impasto, Monet impressionism) of a stylised Carl, rendered with the huashu-art-motion painting library in Node and canvas.",
+  "limits_en": [
+    "In the Egyptian version Carl wears a white linen kilt; only the T-shirt, hairstyle, glasses and smile are kept.",
+    "In the Monet version the brush-stroke density on Carl is lower than in the background; the tree-shadow light spots are kept faint so they do not read as dirt."
+  ]
+}

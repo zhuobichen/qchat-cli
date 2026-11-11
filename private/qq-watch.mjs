@@ -30,12 +30,16 @@ import { fileURLToPath } from 'node:url';
 import {
   loadState, saveStateAtomic, advanceCursor, isNewMessage, summarize, emptyState,
 } from './lib/watch-state.mjs';
+import { nowLine, looksOffline } from './time-sense.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, 'private', 'qq-watch.config.json');
-const STATE_PATH = join(ROOT, 'private', 'qq-watch.state.json');
+// 状态文件路径可用环境变量覆盖。为什么要它：这台机器上有个看不见的旧实例
+// （没有 node 进程，但日志每秒在写）占着原来的 state 和 log，
+// 起新实例必须让它走自己的文件，否则两边互相踩、消息重复推。
+const STATE_PATH = process.env.QCE_WATCH_STATE || join(ROOT, 'private', 'qq-watch.state.json');
 const INBOX = join(ROOT, 'output', 'qq-inbox.jsonl');
-const LOG_PATH = join(ROOT, 'output', 'qq-watch.log');
+const LOG_PATH = process.env.QCE_WATCH_LOG || join(ROOT, 'output', 'qq-watch.log');
 const DLQ_PATH = join(ROOT, 'output', 'qq-watch.dlq.jsonl');
 const QUEUE_SCRIPT = join(ROOT, 'scripts', 'qce-queue.mjs');
 
@@ -159,6 +163,7 @@ async function deliver(text, { retries = cfg.deliverAttempts } = {}) {
       if (!json.ok) throw new Error(JSON.stringify(json).slice(0, 200));
       breakerRecord(true);
       state.stats.delivered += 1;
+      state.lastDeliveryAt = Date.now();   // 记"我上次确实投出去过"，时间感知拿它算自己清醒多久
       return json;
     } catch (e) {
       lastError = e;
@@ -249,6 +254,33 @@ async function api(action, params = {}) {
   return json.data;
 }
 
+/**
+ * 看清一张图：拿本地文件 → read-image.mjs 分流（文字走 OCR / 画面走千问）。
+ *
+ * 为什么要自动做：我自己的模型不收图片输入，群里发图原本只能靠 OCR 刮字，
+ * 表情包刮出个「O」就没了。之前对着冷峰发的一张 GIF 只能说"猜不出啥意思"。
+ *
+ * 为什么不在这里 await 太久：视觉模型 2-3 秒。一条消息最多看 2 张，够用且不拖。
+ */
+async function describeImage(file) {
+  if (!file) return '';
+  try {
+    const info = await api('get_image', { file });
+    const local = typeof info?.file === 'string' ? info.file : '';
+    if (!local || !existsSync(local)) return '';
+    const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'read-image.mjs'), local], {
+      encoding: 'utf8',
+      timeout: 120000,
+    });
+    const out = ((r.stdout || '') + (r.stderr || '')).trim();
+    if (!out) return '';
+    // 太长的截断，投递文本要省 token
+    return out.replace(/\s+/g, ' ').slice(0, 180);
+  } catch {
+    return '';
+  }
+}
+
 function flatten(message) {
   if (typeof message === 'string') return message;
   if (!Array.isArray(message)) return '';
@@ -266,6 +298,35 @@ function flatten(message) {
       default: return `[${s?.type ?? '?'}]`;
     }
   }).join('').trim();
+}
+
+/** 取出这条消息引用了哪条（reply 段里的 message_id），没有就返回空 */
+function replyIdOf(msg) {
+  if (!Array.isArray(msg?.message)) return '';
+  const seg = msg.message.find((s) => s?.type === 'reply');
+  return seg?.data?.id ? String(seg.data.id) : '';
+}
+
+/**
+ * 把被引用的那条捞出来。
+ *
+ * 为什么必须捞：只看 `[回复]` 标记等于没看见引用的内容。
+ * 实测踩过——冷峰引用了自己「手机掉进坑里」那段，我只看到「太恶心了，屎干了」，
+ * 于是猜成「宠物拉的」，猜错方向，还先回了句错的。
+ * OneBot 的 reply 段只给 message_id，正文要再调 get_msg 拿。
+ */
+async function fetchQuoted(messageId) {
+  if (!messageId) return null;
+  try {
+    const q = await api('get_msg', { message_id: Number(messageId) });
+    if (!q) return null;
+    const who = q.sender?.card || q.sender?.nickname || String(q.sender?.user_id ?? '');
+    const text = flatten(q.message).slice(0, 300);
+    if (!text) return null;
+    return { who, text };
+  } catch {
+    return null;
+  }
 }
 
 function mentionsSelf(msg, selfUin) {
@@ -367,6 +428,43 @@ async function poll() {
       state.seen[id] = 1;
       if (String(m.sender?.user_id) === String(selfUin)) continue;
 
+      const ownText = flatten(m.message).slice(0, 500);
+
+      // 图里有啥：文字图走 OCR、画面走千问（read-image.mjs 自己分流）。
+      // 一条消息最多看 2 张，多的不管——够用，也不会把投递拖太久。
+      const imageSeen = [];
+      if (Array.isArray(m.message)) {
+        const imgs = m.message.filter((s) => s?.type === 'image').slice(0, 2);
+        for (const seg of imgs) {
+          const d = await describeImage(seg.data?.file);
+          if (d) imageSeen.push(d);
+        }
+      }
+      // 引用要单独捞：reply 段只有 message_id，正文得再调 get_msg。
+      // 不捞的话我只能看到「太恶心了」这种半句话，方向会猜错（踩过一次）。
+      const quoted = await fetchQuoted(replyIdOf(m));
+
+      // 上下文只补"这条对话里**还没推给过**的那些"。
+      //
+      // 为什么这么算：以前固定带最近 6 条，可这个会话本身就有记忆——上一条推过的
+      // 内容我这边还留着，再推一遍纯属重复烧 token（一天几十条消息，每条都配 6 条历史，
+      // 等于同一段对话被反复抄了六七遍）。
+      // 现在改成：从这条往前收，**碰到第一条已经推过的就停**，只带中间那段新的。
+      const ctx = [];
+      const curIdx = msgs.indexOf(m);
+      for (let i = curIdx - 1; i >= 0; i -= 1) {
+        const x = msgs[i];
+        const xid = String(x.message_id ?? `${x.time}:${x.message_seq}`);
+        if (state.pushed && state.pushed[xid]) break;   // 已经在我记忆里，往回全是旧料
+        if (ctx.length >= cfg.contextMessages) break;
+        ctx.unshift({
+          time: x.time,
+          sender: x.sender?.card || x.sender?.nickname || String(x.sender?.user_id),
+          senderId: x.sender?.user_id,
+          text: flatten(x.message).slice(0, 200),
+        });
+      }
+
       fresh.push({
         at: new Date().toISOString(),
         kind: isGroup ? 'group' : 'private',
@@ -375,15 +473,14 @@ async function poll() {
         time: m.time,
         senderId: m.sender?.user_id,
         sender: m.sender?.card || m.sender?.nickname || String(m.sender?.user_id),
-        text: flatten(m.message).slice(0, 500),
+        text: ownText,
+        ...(imageSeen.length ? { imageDesc: imageSeen.join(' / ') } : {}),
+        ...(quoted ? { quotedFrom: quoted.who, quotedText: quoted.text } : {}),
         mentioned: mentionsSelf(m, selfUin),
-        context: msgs.filter((x) => x.time <= m.time).slice(-(cfg.contextMessages + 1), -1).map((x) => ({
-          time: x.time,
-          sender: x.sender?.card || x.sender?.nickname || String(x.sender?.user_id),
-          senderId: x.sender?.user_id,
-          text: flatten(x.message).slice(0, 200),
-        })),
+        context: ctx,
       });
+      if (!state.pushed) state.pushed = {};
+      state.pushed[id] = 1;                             // 记为"给过了"，下次不再当上下文带
 
       if (fresh.length >= cfg.maxPerPoll) break;
     }
@@ -450,6 +547,15 @@ async function runOnce() {
     const head = batch[0];
     const lines = [];
 
+    // 时间先摆出来。为什么要它：今早我把"14 小时没新消息"判成"群里没人说话"，
+    // 实际是 QQ 掉了。光有分钟数不够，得有时段语义 + 掉线提示。
+    const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
+    const line = nowLine(Date.now(), {
+      lastSeenMs: lastSeenMs,
+      selfAwakeMs: state.lastDeliveryAt ?? 0,
+    });
+    lines.push(`（${line}）`);
+
     if (head.kind === 'private') {
       lines.push(`【私聊 ${head.sender}】`);
     } else {
@@ -459,7 +565,14 @@ async function runOnce() {
     }
 
     if (batch.length === 1) {
+      // 引用先摆出来，再摆他说的话——顺序反了会让人以为引用是正文
+      if (head.quotedText) {
+        lines.push(`（${head.sender} 引用了 ${head.quotedFrom}：${head.quotedText}）`);
+      }
       lines.push(head.text);
+      if (head.imageDesc) {
+        lines.push(`（图里是：${head.imageDesc}）`);
+      }
       if (head.context?.length) {
         lines.push('（最近上下文）');
         for (const c of head.context) lines.push(`${c.sender}(${c.senderId ?? '?'}): ${c.text}`);
@@ -467,8 +580,12 @@ async function runOnce() {
     } else {
       for (const m of batch) {
         const t = new Date(m.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+        if (m.quotedText) {
+          lines.push(`[${t}] （引用 ${m.quotedFrom}：${m.quotedText}）`);
+        }
         // 带 QQ 号：显示名会改、会重名，光看名字迟早认错人
         lines.push(`[${t}] ${m.sender}(${m.senderId ?? '?'}): ${m.text}`);
+        if (m.imageDesc) lines.push(`[${t}] （图里是：${m.imageDesc}）`);
       }
     }
 

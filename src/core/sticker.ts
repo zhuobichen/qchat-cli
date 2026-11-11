@@ -9,7 +9,8 @@
  * 纯逻辑（候选构造、请求体、结果解析）与网络分开，便于单测。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { searchEmojiLibrary, emojiPath } from './emoji-library.js';
 import { cosine, decodeVector, embedTexts, resolveApiKey as resolveEmbeddingApiKey } from './embeddings.js';
 import { feedbackMultiplier, recordStickerSent, statsBySticker } from './sticker-feedback.js';
@@ -179,6 +180,45 @@ export interface PickedSticker extends StickerCandidate {
 }
 
 /**
+ * 最近用过的表情 id（新的在后面）。
+ *
+ * 为什么要它：候选是按匹配度降序排的，而 pickSticker 以前永远取 candidates[0]，
+ * 于是同一个意图每次都甩同一张——一整天说「无语」「看戏」，群里就反复出现那两三张。
+ * 号主 2026-11-11 当面点出来的。
+ */
+const RECENT_FILE = join(homedir(), '.qchat-cli', 'sticker-recent.json');
+const RECENT_KEEP = 12;
+
+function loadRecent(): string[] {
+  try {
+    const arr = JSON.parse(readFileSync(RECENT_FILE, 'utf-8'));
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberUsed(id: string): void {
+  try {
+    const list = loadRecent().filter((x) => x !== id);
+    list.push(id);
+    mkdirSync(dirname(RECENT_FILE), { recursive: true });
+    writeFileSync(RECENT_FILE, JSON.stringify(list.slice(-RECENT_KEEP)), 'utf-8');
+  } catch {
+    /* 记不住不影响发送 */
+  }
+}
+
+/** 从候选里挑一张：最近用过的沉底，剩下的随机，避免老刷同一张 */
+function pickVaried(candidates: StickerCandidate[]): StickerCandidate {
+  if (candidates.length === 1) return candidates[0];
+  const recent = new Set(loadRecent());
+  const fresh = candidates.filter((c) => !recent.has(c.id));
+  const pool = fresh.length ? fresh : candidates;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
  * 选表情：先 Jev，失败或没把握就回退关键词；都没有就返回 null。
  */
 export async function pickSticker(intent: string, options: PickOptions = {}): Promise<PickedSticker | null> {
@@ -188,9 +228,12 @@ export async function pickSticker(intent: string, options: PickOptions = {}): Pr
   const jev = await chooseWithJev(intent, candidates, options);
   if (jev) {
     const hit = candidates.find((c) => c.id === jev.id)!;
+    rememberUsed(hit.id);
     return { ...hit, source: 'jev', confidence: jev.confidence };
   }
-  return { ...candidates[0], source: 'keyword' };
+  const picked = pickVaried(candidates);
+  rememberUsed(picked.id);
+  return { ...picked, source: 'keyword' };
 }
 
 /** 校验 id 并返回本地文件路径（不存在返回 null） */

@@ -1,0 +1,34 @@
+{
+  "slug": "chinese-ink-wash",
+  "styles": [
+    "S03"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Baskerville.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Ink-wash village hearth where a villager lets a stray cat stay, painted with a brush-stroke engine on rice paper with a single red seal.",
+  "limits_en": [
+    "No jump frames flagged; there are no cuts, and subtitle changes, fade-outs and the moon are all gradual (max frame difference 0.73).",
+    "Frames 1-2 are almost still (difference below 0.02): blank rice paper before the mountains start; only 2 frames.",
+    "Mean frame difference is 0.27, well below the reference A at 2.29; large white space and few moving parts are part of the style.",
+    "The villager and cat are a few loose brush-stroke pieces; the cat going from sitting to curled is one stroke set deforming, not frame-by-frame drawing.",
+    "The clear-ink wash inside the doorway has vertical brush marks that can read as a bamboo blind from afar."
+  ]
+}

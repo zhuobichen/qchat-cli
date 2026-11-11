@@ -1,0 +1,34 @@
+{
+  "slug": "sticker-explainer",
+  "styles": [
+    "S14"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "An explainer fact card of die-cut stickers, a rising bar chart and a smooth zoom path from mice finding grain to a wildcat arriving.",
+  "limits_en": [
+    "The automated check passes with no jump frames; the largest frame difference (6.58 at 6.52 s) is the label slapping on, by design.",
+    "Stickers are procedurally painted photo-style illustrations, not real photo cut-outs; the cat's tabby is a few rough stripes and looks cartoonish up close.",
+    "The bar chart numbers are illustrative (the frame says Illustrative counts), not archaeological statistics.",
+    "During the overview (about 4.0-4.6 s) the UI text is very small; it is only a transition to show the full canvas."
+  ]
+}

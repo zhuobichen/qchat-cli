@@ -1,0 +1,34 @@
+{
+  "slug": "watercolor",
+  "styles": [
+    "S19"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Bradley Hand Bold.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A watercolor village where mice reach a grain heap and a wildcat steps out of the reeds, painted stroke by stroke on cotton paper.",
+  "limits_en": [
+    "No jump frames flagged; there are no cuts and caption changes use a mist wipe (max frame difference 1.46).",
+    "Frame 1 is blank paper and the sky starts sweeping from frame 1, so it counts as neither black nor still.",
+    "The cat is a side-view walk built from a few strokes, with straight legs and only leg swing and body bob, no fine expressions.",
+    "Granulation and paper texture are slightly heavier than in A, and overall saturation is a little higher.",
+    "The handwritten annotation wildcat Felis lybica has about 36 px capitals, one step smaller than the main caption (about 45 px)."
+  ]
+}

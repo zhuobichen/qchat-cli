@@ -1,0 +1,37 @@
+{
+  "slug": "exploded-view",
+  "styles": [
+    "S29"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "Pillow"
+    ],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/Avenir Next.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A brandless rangefinder camera explodes along its assembly axes with two macro shots and reassembles layer by layer, with leader-line labels.",
+  "limits_en": [
+    "Lens elements are parabolic-approximation solids of revolution, not designed from a real optical prescription; EEVEE screen-space refraction is less accurate than path tracing for stacked lenses.",
+    "Components are boxes plus solder-fillet prisms, without real rounded packages or lead bend radii; BGA models only the outer two ball rings.",
+    "The nine aperture blades are layered one per level, so the overlap order differs from a real iris (not visible from the front).",
+    "The shutter only opens and closes its blades; the drive linkage is not modelled.",
+    "No-clipping relies on assembly-axis, timing and size design plus frame review, not per-frame collision detection.",
+    "Macro depth of field is shallow; components away from the chip are blurred on purpose.",
+    "The two macro transitions (about 4.8 s and 6.0 s) are fast continuous camera moves over a dense board and were flagged as jumps by the automated check (frames 145-146 and 179-184); reviewed frames show continuous parallax, no cut, no clipping and no black frames."
+  ]
+}

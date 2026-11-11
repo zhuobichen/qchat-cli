@@ -1,0 +1,31 @@
+{
+  "slug": "brick-toy",
+  "styles": [
+    "S33"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "Pillow"
+    ],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A brick robot snaps three bricks into a gapped toy bridge so a red brick car can drive across, in a Blender EEVEE tabletop scene.",
+  "limits_en": [
+    "No 2x supersampling (32 TAA samples used to keep render time down); fine stud edges may shimmer slightly when viewed small.",
+    "The robot places bricks with position constraints and no finger grip; the bridge rebound under the car is tiny (about 0.5 mm).",
+    "Captions use Arial Rounded instead of the upstream-suggested Fredoka, which is not installed locally."
+  ]
+}

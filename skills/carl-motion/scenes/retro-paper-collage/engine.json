@@ -1,0 +1,42 @@
+{
+  "slug": "retro-paper-collage",
+  "styles": [
+    "S05"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Impact.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+    "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Rockwell.ttc",
+    "/System/Library/Fonts/Supplemental/Futura.ttc",
+    "/System/Library/Fonts/Supplemental/Didot.ttc",
+    "/System/Library/Fonts/Supplemental/AmericanTypewriter.ttc",
+    "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Bodoni 72.ttc",
+    "/System/Library/Fonts/Supplemental/Copperplate.ttc",
+    "/System/Library/Fonts/Supplemental/Times New Roman.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Ransom-note letters and torn-paper cut-outs tell why cats moved in with us, animated at 12 fps with a three-frame edge boil.",
+  "limits_en": [
+    "The cat and mice are paper cut-out assemblies with simple swinging legs and no fine expressions.",
+    "The jump frames 73, 75, 78 and 155 flagged by the automated check are the title paper being pulled away and caption changes: by design.",
+    "At 12 fps stop-motion, frame differences within a beat are close to 0; the style requires it."
+  ]
+}

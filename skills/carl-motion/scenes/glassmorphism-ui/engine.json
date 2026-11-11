@@ -1,0 +1,36 @@
+{
+  "slug": "glassmorphism-ui",
+  "styles": [
+    "S06"
+  ],
+  "stack": "node",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": null,
+    "pip": [],
+    "blender": null,
+    "node": ">=20",
+    "binaries": [
+      "ffmpeg",
+      "chrome"
+    ],
+    "npm": [
+      "puppeteer-core@24.10.0"
+    ]
+  },
+  "fonts": [
+    "SF Pro Display",
+    "-apple-system",
+    "Helvetica Neue",
+    "PingFang SC"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Frosted-glass cards, a refracting Liquid-Glass lens and a checklist that folds into a Focus card, captured frame by frame in headless Chrome.",
+  "limits_en": [
+    "No audio track (silent by spec).",
+    "The lens interior is fairly dark (displacement samples the dark background), so it reads as a glass bubble rather than a magnifier; the dispersion edge is clear.",
+    "From 0 to 1.5 s the main-card content fades in progressively, so the lower half of the card is empty at the start.",
+    "Chrome for Testing 155 must be reinstalled (npx @puppeteer/browsers install chrome@155.0.8059.79) or CHROME_PATH must point to a Chrome; the system Chrome was only verified for opening the review page, not for re-rendering the clip."
+  ]
+}

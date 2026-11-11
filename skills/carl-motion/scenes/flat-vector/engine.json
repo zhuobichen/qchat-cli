@@ -1,0 +1,33 @@
+{
+  "slug": "flat-vector",
+  "styles": [
+    "S07"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/SFNSRounded.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "One-take flat-vector animation of people beginning to farm and store grain, with GSAP-style easing and parallax camera moves.",
+  "limits_en": [
+    "The automated check passes with an empty jump list; the largest frame difference (6.96, frame 156, 5.17 s) is the designed caption change during the pan.",
+    "There is a single simple farmer figure with no facial animation; grain pouring is shown by heaps rising at the jar mouths, not by a visible level inside.",
+    "The farmer and field on the left are cropped out during the pan; this is the cost of a one-take shot.",
+    "The farmer skin tone is a lighter step of coral, strictly a seventh colour value."
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "slug": "point-cloud-survey",
+  "styles": [
+    "S27"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "Pillow"
+    ],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/System/Library/Fonts/Menlo.ttc"
+  ],
+  "crf": 19,
+  "deterministic": null,
+  "summary_en": "A synthetic forest point cloud is peeled away layer by layer to reveal castle foundations and a stone arch, then condenses into a lit solid surface.",
+  "limits_en": [
+    "Points are EEVEE point-cloud sprites, not strict soft discs; a slight squareness is visible up close.",
+    "Terrain micro-relief is procedural noise; it resembles hillshade of a real DEM but lacks its randomness.",
+    "The closing shot is a little farther away than in A (A ends close to the ground); the subject is kept mid-frame for 9:16 readability."
+  ]
+}

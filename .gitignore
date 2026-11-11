@@ -89,3 +89,9 @@ private/wiki/
 .probe-*.mjs
 .try-*.mjs
 *.lnk
+
+# 渲染测试产物
+.cm-test/
+.px-test/
+# 运行时状态（multi-instance）
+private/qq-watch-v2.state.json

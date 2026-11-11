@@ -1,0 +1,33 @@
+{
+  "slug": "woodcut",
+  "styles": [
+    "S30"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Baskerville.ttc",
+    "/System/Library/Fonts/Supplemental/Songti.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A patched-sail fishing boat after the storm, built entirely from carved gouge marks in black ink and paper white.",
+  "limits_en": [
+    "The style grammar matches A, but A has figures and close-up carving hands while B is landscape plus boat, so the information density is slightly lower.",
+    "The storm cloud mass is small, leaving a large solid-black area at the top left of the sky.",
+    "The boat turn is a yaw of the 3D hull projection; midway the sail is nearly edge-on to the camera and looks narrow for about 0.3 s."
+  ]
+}

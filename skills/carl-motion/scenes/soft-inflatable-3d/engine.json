@@ -1,0 +1,37 @@
+{
+  "slug": "soft-inflatable-3d",
+  "styles": [
+    "S34"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "Pillow"
+    ],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf",
+    "/System/Library/Fonts/Avenir Next.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Mint inflatable letters G and O drop onto a quilted cushion with physically integrated squash and bounce, then a BOUNCE BACK caption appears.",
+  "limits_en": [
+    "Full render verified: 240 frames from the current scene.py, ffprobe, full decode, per-frame motion statistics, spot frames against A, a contact strip, and frame-by-frame review of frames 120-124 and 182-184 (fast jump motion plus stretch plus motion blur, not dropped frames); physics numbers checked numerically; real-time playback not reviewed.",
+    "Colours were changed to the complement of A at the maker's request, departing from the brief's \"A and B keep the same main colours\"; re-check A/B colour pairing when finalising the playing order.",
+    "Mean frame difference is 1.99 (v1 0.73, A 6.49): A has many surging beads, while B's motion is concentrated in two letters, the cushion and the camera orbit.",
+    "The letters start slightly out of frame at the top (they fall from above); the soft upper-middle background has a near-white highlight region.",
+    "Cushion deformation is an analytic approximation (Gaussian kernel with distance delay), not a volume-preserving soft-body simulation; the cushion itself gets no motion blur.",
+    "The letter-cushion contact is hidden by a slight 0.05 sink, so a faint overlap may be visible at extreme close range."
+  ]
+}

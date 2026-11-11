@@ -1,0 +1,35 @@
+{
+  "slug": "blueprint",
+  "styles": [
+    "S04"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
+    "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "Prussian-blue engineering drawing of a granary, mice and a wildcat, drawn stroke by stroke with dimension lines, balloons and a title block.",
+  "limits_en": [
+    "No jump frames flagged by the automated check; the longest still stretch is 0 frames.",
+    "The first 0.2 s shows only the frame and ground line starting to draw, so the picture is sparse.",
+    "When zoomed out the mice are only about 50 px wide at 1080x608, so a DETAIL B magnifier circle was added.",
+    "Mouse leader lines cross the jars and ground hatching; common in engineering drawings but slightly dense.",
+    "Small annotations are about 12 px tall at 1080x608: readable but not large; main figure titles are 44 px cap height."
+  ]
+}

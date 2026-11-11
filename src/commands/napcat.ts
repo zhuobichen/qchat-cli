@@ -100,7 +100,9 @@ const DEFAULT_NAPCAT_DIR = (() => {
 })();
 const NAPCAT_PORT = 3000;
 const POLL_INTERVAL_MS = 2000;
-const STARTUP_TIMEOUT_MS = 180_000; // 3 分钟超时
+// 原来 3 分钟。实测号主经常不在电脑前，3 分钟内没扫码进程就自己退出，
+// 码也跟着过期，等于白跑一次还要重新起。放到 10 分钟，让码挂在屏幕上等人。
+const STARTUP_TIMEOUT_MS = 600_000; // 10 分钟超时
 
 /** 从注册表找 QQ 安装路径 */
 function findQQPath(): string | null {

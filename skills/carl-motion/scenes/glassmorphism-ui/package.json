@@ -1,0 +1,6 @@
+{
+  "name": "s06-glass-b",
+  "private": true,
+  "description": "S06 玻璃拟态UI B — 今天只做三件事",
+  "dependencies": { "puppeteer-core": "24.10.0" }
+}

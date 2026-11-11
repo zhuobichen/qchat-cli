@@ -1,0 +1,35 @@
+{
+  "slug": "particle-morph",
+  "styles": [
+    "S35"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/Avenir Next.ttc"
+  ],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "60,000 amber particles morph from a nebula to a village, a vortex, a cat and a person, and finally the words MAYBE THE CAT CHOSE US.",
+  "limits_en": [
+    "No jump frames flagged; the darkest frame averages about 24/255, so there are no black frames.",
+    "The village hold (1.9-2.9 s) and the ending (6.9-8 s) only breathe and twinkle, so frame differences are tiny (ending minimum 0.017); one near-still pair, longest still stretch 1 frame.",
+    "At 4.9-5.9 s the caption particles still swirl and the vortex centre sits between the person and cat, so their silhouettes are partly covered by light dust.",
+    "Frames mid-gathering (for example 1.0 s and 3.5 s) are a light haze; the shape only reads once the spring settles, which is part of the rhythm.",
+    "The count is 60,000 particles, not the hundreds of thousands of the reference; more would only be slower, and the silhouettes already read.",
+    "A solid text layer is overlaid after the particles land so the caption stays readable when shrunk, so the text is not purely particles."
+  ]
+}

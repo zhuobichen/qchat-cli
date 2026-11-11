@@ -1,0 +1,27 @@
+{
+  "slug": "claymation",
+  "styles": [
+    "S12"
+  ],
+  "stack": "blender",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [],
+    "blender": "5.2",
+    "node": null,
+    "binaries": [
+      "blender",
+      "ffmpeg"
+    ]
+  },
+  "fonts": [],
+  "crf": 16,
+  "deterministic": null,
+  "summary_en": "A blue-grey clay cat squashes clay into a flowerpot and plants a sprout, in a Blender EEVEE stop-motion scene with procedural clay materials.",
+  "limits_en": [
+    "Characters are rounded metaball shapes; the hand-pinched feel comes mostly from bump maps and geometric thumbprints, so detail and lighting realism are a little below a real clay animation.",
+    "Background props (blue watering can, red mushroom) are simplified; the can silhouette is quite abstract.",
+    "Paw-to-clay contact follows positions only, with no physical deformation (fingers do not sink into the clay)."
+  ]
+}

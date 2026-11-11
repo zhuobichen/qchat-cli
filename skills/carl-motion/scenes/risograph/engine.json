@@ -1,0 +1,31 @@
+{
+  "slug": "risograph",
+  "styles": [
+    "S11"
+  ],
+  "stack": "python",
+  "entry": "./render.sh <work_dir>",
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "numpy",
+      "opencv-python",
+      "Pillow"
+    ],
+    "blender": null,
+    "node": null,
+    "binaries": [
+      "ffmpeg"
+    ]
+  },
+  "fonts": [
+    "/System/Library/Fonts/HelveticaNeue.ttc"
+  ],
+  "crf": 16,
+  "deterministic": true,
+  "summary_en": "A cyclist rides through a park under MAKE IT MOVE IT title slams, printed as three misregistered riso ink plates with halftone screens.",
+  "limits_en": [
+    "The 6.5 s whole-plate misregistration kick and every title slam show up as jump frames in deliver.py: by design. Their frame numbers move when you change the beats.",
+    "The cyclist is an assembly of geometric pieces, without the street buildings that A has."
+  ]
+}
