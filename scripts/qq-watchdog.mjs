@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 
 const DRY = process.argv.includes('--dry');
 const ONCE = process.argv.includes('--once');
@@ -107,17 +107,27 @@ async function health() {
  * spawnSync 里、直达 90 秒超时才被 kill——这一整段它什么都干不了，
  * 连"要不要通知号主扫码"都没机会判断。
  *
- * 现在改成 Start-Process 起一个独立窗口的 cmd，调用立刻返回，
- * 复查逻辑照常在 40 秒后跑；需要扫码时也就能按时把二维码推出去。
+ * 现在改成 spawn + detached 起独立子进程，调用立刻返回，
+ * 复查逻辑照常在 60 秒后跑；需要扫码时也就能按时把二维码推出去。
+ *
+ * 又踩了一次（23:34）：先试的 `powershell Start-Process` 在这个上下文里
+ * 返回 ok、stdout 为空——**但启动器压根没被执行**（.napcat-start.log 的 mtime 不变），
+ * 没有 QQ 进程、没有二维码。所以最终改成纯 Node 的 detached spawn，
+ * 它不依赖 powershell 的解析，也就不用猜参数怎么拼。
  */
 function restartNapCat() {
   const shortProj = 'D:\\GITHUB~1\\ZHAOWE~1\\QCHAT-~1';
   const script = path.join(ROOT, '.launch-napcat.cmd');
   if (!fs.existsSync(script)) return { ok: false, error: '.launch-napcat.cmd 不存在' };
   try {
-    const ps = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','${shortProj}\\.launch-napcat.cmd' -WindowStyle Hidden`;
-    const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { timeout: 20_000, encoding: 'utf8' });
-    return { ok: r.status === 0, out: 'detached', err: (r.stderr ?? '').slice(0, 200) };
+    const child = spawn('cmd', ['/c', `${shortProj}\\.launch-napcat.cmd`], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: ROOT,
+      windowsHide: true,
+    });
+    child.unref();
+    return { ok: true, out: `detached pid=${child.pid}`, err: '' };
   } catch (e) {
     return { ok: false, error: String(e.message).slice(0, 120) };
   }
@@ -181,9 +191,21 @@ async function tick() {
     csv({ ...h, action: 'dry' });
     return;
   }
+  // 凌晨 2:00–7:00 不自动重启：这段时间是风控高发期，人也不在，
+  // 万一又是个"必须扫码"的掉线，反复拉起只会把号往死里折腾。
+  // 宁可安静等到早上，醒来再扫码。（这条是从别人的掉线复盘里抄的）
+  const hour = new Date().getHours();
+  if (hour >= 2 && hour < 7) {
+    log('凌晨静默期（02:00–07:00），不自动重启；等白天人工处理');
+    csv({ ...h, action: 'quiet-hours' });
+    return;
+  }
   log('正在重启 NapCat ...');
   const r = restartNapCat();
   csv({ ...h, action: r.ok ? 'restarted' : 'restart-failed:' + (r.error ?? r.err ?? '') });
+  // 把 powershell 的返回也打出来：上次它说"命令已发出"但启动器压根没跑，
+  // 没有输出就只能靠猜。宁可日志多一行，也不要再出现"看着成功其实没动"。
+  log(`重启结果: ok=${r.ok} out=${JSON.stringify(r.out ?? '')} err=${JSON.stringify(r.err ?? '')}`);
   log(r.ok ? '重启命令已发出，等 60 秒再确认' : `重启失败: ${r.error ?? r.err}`);
   // 60 秒而不是 40：启动器要先拉起 QQ、再走到弹二维码大约要 30 秒，
   // 40 秒去查往往正好卡在"还没开始登录"和"二维码已出"之间，判断不准。

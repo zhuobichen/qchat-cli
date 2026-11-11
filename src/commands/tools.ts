@@ -19,7 +19,7 @@
  *   qce see   <图片路径|URL>            看图（纯文字走 OCR、有画面走千问）
  */
 import { Command } from 'commander';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve, extname, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,6 +93,47 @@ function segmentFor(abs: string) {
   return { type: 'file', data: { file: abs, name: abs.split(/[\\/]/).pop() } };
 }
 
+/**
+ * 像人一样发消息：打字延迟 + 每分钟频率上限。
+ *
+ * 为什么要做（2026-11-11 查到的做法，见 rules.md 第 10 节）：
+ * 机器人被踢下线的原因里，「秒回」是很显眼的一条——真人不会在别人说完话
+ * 200 毫秒内就整段回复。别人踩过坑的配置是：基础 1 秒 + 每字 0.03 秒、
+ * 上限 3 秒，再叠 ±20% 抖动；同时一分钟别超过 10 条。
+ *
+ * 这不是为了"骗过风控"，而是让行为别那么像脚本：
+ * 一晚上被踢五次之后，任何能降噪的事都值得做。
+ */
+const RATE_FILE = join(ROOT, 'output', '.say-rate.json');
+const MAX_PER_MINUTE = 10;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function humanPacing(text: string): Promise<string> {
+  const base = 1000 + text.length * 30;
+  const capped = Math.min(base, 3000);
+  const jittered = Math.round(capped * (0.8 + Math.random() * 0.4));
+
+  // 频率上限：最近 60 秒内已经发了多少条
+  let recent: number[] = [];
+  try {
+    recent = (JSON.parse(readFileSync(RATE_FILE, 'utf8')) as number[]).filter((t) => Date.now() - t < 60_000);
+  } catch { /* 没有记录就从零算 */ }
+  let note = '';
+  if (recent.length >= MAX_PER_MINUTE) {
+    const waitFor = 60_000 - (Date.now() - recent[0]) + 200;
+    note = `限流等 ${Math.round(waitFor / 1000)}s`;
+    await sleep(waitFor);
+    recent = recent.filter((t) => Date.now() - t < 60_000);
+  }
+  await sleep(jittered);
+  recent.push(Date.now());
+  try { writeFileSync(RATE_FILE, JSON.stringify(recent), 'utf8'); } catch { /* 记不上就算了 */ }
+  return note;
+}
+
 export function toolsCommand(program: Command): void {
   // ── say：发文本 ───────────────────────────────────────
   program
@@ -107,8 +148,9 @@ export function toolsCommand(program: Command): void {
       try {
         const target = parseTarget(targetRaw);
         if (!String(text || '').trim()) throw new Error('文本是空的');
+        const pace = await humanPacing(String(text));
         await sendSegments(target, [{ type: 'text', data: { text } }]);
-        report(true, `say → ${target.kind}:${target.id}`, `${text.slice(0, 24)}…`);
+        report(true, `say → ${target.kind}:${target.id}`, `${text.slice(0, 24)}…${pace ? `（${pace}）` : ''}`);
       } catch (e: any) {
         report(false, 'say', e?.message || String(e));
       }
