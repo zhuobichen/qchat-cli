@@ -528,5 +528,17 @@ node scripts/minimax-image.mjs "提示词" --ar 9:16      # 同一套，脚本�
    下游按扩展名判类型的工具直接拒读（`read_image` 就报过「扩展名声明与字节不符」）。
    现在按 magic number 定扩展名。
 
+**2026-11-12 补：MiniMax 的对话/视觉模型名别猜**（都是真 key 实测的）
+
+| 模型名 | 结果 |
+|---|---|
+| `MiniMax-Text-01` | ✅ code 0，**且能吃图片**（问它图里细节，答得对：锅答成「罐头」、鸟喙形状答「尖的」） |
+| `MiniMax-VL-01` | ❌ code 2013 `unknown model` —— 这个名字**不存在**，别凭直觉写 |
+| `MiniMax-M1` | ⚠️ 能对话，但 `not support img` |
+| `abab6.5s/6.5g/6.5/5.5-chat` | ❌ code 2069 `no longer available` |
+
+对话端点是 `/v1/text/chatcompletion_v2`，**不是** `/chat/completions`；而且 **HTTP 200 也可能是失败**，
+必须看 `base_resp.status_code`（1004 = key 无效，2013 = 模型名/参数错，2069 = 模型下线，0 才算成功）。
+
 「H3」是 MiniMax 的**视频**模型家族（MiniMax-Hailuo/MiniMax-H3），生图模型 ID 是 `image-01`，
 别把两个搞混。
