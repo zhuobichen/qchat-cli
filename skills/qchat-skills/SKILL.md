@@ -207,6 +207,18 @@ node dist/cli.js pic group:<群号> <路径>     # 发出去
 
 豆包桌面版那条路（`generate_image` 工具）还在，但要开 GUI、单张 15~35 秒，慢的时候用它兜底。
 
+## 15. 状态自检与群友档案
+
+```bash
+qce status                                  # 一屏：账号 / 探针 / 禁言 / 进程 / 掉线 / 待回复
+node scripts/profiles.mjs build             # 群友档案：从索引重算
+node scripts/profiles.mjs show 冷峰沉睡      # 看某人（名字片段也行）
+node scripts/profiles.mjs set <QQ|名字> "一句判断"
+```
+
+判断死活只看 `qce status` 的「会话探针」那一行：好友列表返空就是半死，重启；
+`online` 字段会骗人。档案两个作用——认人（名片会改、会重名）和接话（他这周提过三次加班）。
+
 ## 判断该不该用哪个
 
 | 想干的事 | 用哪个 |

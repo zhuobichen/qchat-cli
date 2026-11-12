@@ -49,6 +49,16 @@ export interface McpBackend {
   hexTeamReport(args: { depth?: number }): Promise<unknown>;
   /** 真正发出某一局的开黑播报（两阶段确认通过后才调用） */
   hexAnnounceNow(args: { gameId: number }): Promise<unknown>;
+
+  // ── 工具层的五个动作（2026-11-12 补）──
+  /** 发一张本地图片或远程图片（同样两阶段确认 + 白名单） */
+  sendImage(args: { kind: 'private' | 'group'; target: number; path?: string; url?: string }): Promise<unknown>;
+  /** 戳一戳：群里戳某人，或私聊戳对方 */
+  poke(args: { kind: 'private' | 'group'; target: number; userId?: number }): Promise<unknown>;
+  /** 用 MiniMax 生图，返回落盘路径 */
+  draw(args: { prompt: string; aspectRatio?: string; count?: number }): Promise<unknown>;
+  /** 把活派给子会话（车道），返回会话 id 与车道名 */
+  dispatch(args: { task: string; lane?: string }): Promise<unknown>;
 }
 
 /** 群发开关：默认关闭，只能在进程内显式打开（MCP 场景不给模型这个能力） */
@@ -232,6 +242,60 @@ export const TOOLS: McpTool[] = [
         gameId: { type: 'number', description: '要播报的对局 id（来自 hex_team_report）；省略则取最新一局' },
         confirmationToken: { type: 'string', description: '第一阶段返回的令牌；带上才会真发' },
       },
+    },
+  },
+  {
+    name: 'send_image',
+    description:
+      '发一张图片（本地路径或 http(s) 链接）到指定 QQ 或群。两阶段确认：第一次返回令牌与摘要，带上 confirmationToken 才真正发送；群发默认禁用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', description: 'private 或 group，默认 private' },
+        target: { type: 'number', description: 'QQ 号或群号' },
+        path: { type: 'string', description: '本地图片路径（与 url 二选一）' },
+        url: { type: 'string', description: '远程图片地址（与 path 二选一）' },
+        confirmationToken: { type: 'string', description: '第一阶段返回的令牌；带上才会真发' },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'poke',
+    description: '戳一戳。私聊戳对方（target=QQ 号）；群里戳某人（kind=group、target=群号、userId=被戳的人）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', description: 'private 或 group，默认 private' },
+        target: { type: 'number', description: 'QQ 号或群号' },
+        userId: { type: 'number', description: '群聊时被戳的人' },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'draw',
+    description: '用 MiniMax image-01 生成图片，返回落盘路径（默认 16:9）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '画面描述' },
+        aspectRatio: { type: 'string', description: '宽高比，如 16:9 / 1:1 / 9:16，默认 16:9' },
+        count: { type: 'number', description: '张数 1-4，默认 1' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    name: 'dispatch',
+    description: '把一件写代码/做分析的活派给独立会话（车道）去干，避免污染当前上下文。返回会话 id。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: '要它干什么，写清楚' },
+        lane: { type: 'string', description: '车道名：cli / software / data，默认 cli' },
+      },
+      required: ['task'],
     },
   },
   {
@@ -549,6 +613,121 @@ confirmationToken: ${ctk}
             } catch (error) {
               return ok(id, {
                 content: [{ type: 'text', text: `播报失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'send_image': {
+            const kind: 'private' | 'group' = args.kind === 'group' ? 'group' : 'private';
+            const target = Number(args.target);
+            const imgPath = typeof args.path === 'string' ? args.path.trim() : '';
+            const imgUrl = typeof args.url === 'string' ? args.url.trim() : '';
+            if (!Number.isFinite(target) || target <= 0) {
+              return ok(id, { content: [{ type: 'text', text: 'target 需要是 QQ 号或群号' }], isError: true });
+            }
+            if (!imgPath && !imgUrl) {
+              return ok(id, { content: [{ type: 'text', text: 'path 和 url 至少给一个' }], isError: true });
+            }
+            if (kind === 'group' && options.allowGroupSend !== true) {
+              return ok(id, {
+                content: [{ type: 'text', text: '群发已在服务端禁用（需要显式打开 MCP_ALLOW_GROUP_SEND=1）' }],
+                isError: true,
+              });
+            }
+            const token = typeof args.confirmationToken === 'string' ? args.confirmationToken : '';
+            const where = kind === 'group' ? '群' : 'QQ';
+            if (token === '') {
+              const ctk = makeToken();
+              const what = imgPath || imgUrl;
+              const summary = `将把图片发到${where} ${target}：${what.slice(0, 80)}`;
+              pending.set(ctk, {
+                args: { kind, target, text: `image:${what}` },
+                summary,
+                expiresAt: Date.now() + (options.tokenTtlMs ?? 300_000),
+              });
+              return ok(id, {
+                content: [{
+                  type: 'text',
+                  text: `待确认：${summary}
+确认后再调用一次，并带上这个令牌：
+confirmation_token: ${ctk}
+（5 分钟内有效）`,
+                }],
+              });
+            }
+            const entry = pending.get(token);
+            if (!entry || entry.expiresAt < Date.now()) {
+              pending.delete(token);
+              return ok(id, { content: [{ type: 'text', text: '确认令牌无效或已过期，请重新发起' }], isError: true });
+            }
+            pending.delete(token);
+            try {
+              const sent = await backend.sendImage({
+                kind, target,
+                ...(imgPath ? { path: imgPath } : {}),
+                ...(imgUrl ? { url: imgUrl } : {}),
+              });
+              return ok(id, { content: [{ type: 'text', text: JSON.stringify(sent ?? { ok: true }, null, 2) }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `发送失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'poke': {
+            const kind: 'private' | 'group' = args.kind === 'group' ? 'group' : 'private';
+            const target = Number(args.target);
+            const userId = args.userId === undefined ? undefined : Number(args.userId);
+            if (!Number.isFinite(target) || target <= 0) {
+              return ok(id, { content: [{ type: 'text', text: 'target 需要是 QQ 号或群号' }], isError: true });
+            }
+            if (kind === 'group' && (!userId || !Number.isFinite(userId))) {
+              return ok(id, { content: [{ type: 'text', text: '群聊要带 userId（戳谁）' }], isError: true });
+            }
+            try {
+              const r = await backend.poke({ kind, target, ...(userId ? { userId } : {}) });
+              return ok(id, { content: [{ type: 'text', text: JSON.stringify(r ?? { ok: true }, null, 2) }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `戳失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'draw': {
+            const prompt = String(args.prompt ?? '').trim();
+            if (!prompt) return ok(id, { content: [{ type: 'text', text: 'prompt 不能为空' }], isError: true });
+            try {
+              const r = await backend.draw({
+                prompt,
+                ...(typeof args.aspectRatio === 'string' ? { aspectRatio: args.aspectRatio } : {}),
+                ...(typeof args.count === 'number' ? { count: args.count } : {}),
+              });
+              return ok(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `生图失败：${(error as Error)?.message ?? error}` }],
+                isError: true,
+              });
+            }
+          }
+
+          case 'dispatch': {
+            const task = String(args.task ?? '').trim();
+            if (!task) return ok(id, { content: [{ type: 'text', text: 'task 不能为空' }], isError: true });
+            try {
+              const r = await backend.dispatch({
+                task,
+                ...(typeof args.lane === 'string' ? { lane: args.lane } : {}),
+              });
+              return ok(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] });
+            } catch (error) {
+              return ok(id, {
+                content: [{ type: 'text', text: `派活失败：${(error as Error)?.message ?? error}` }],
                 isError: true,
               });
             }

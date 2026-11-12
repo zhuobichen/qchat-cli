@@ -549,7 +549,28 @@ async function runOnce() {
 
     // 时间先摆出来。为什么要它：今早我把"14 小时没新消息"判成"群里没人说话"，
     // 实际是 QQ 掉了。光有分钟数不够，得有时段语义 + 掉线提示。
-    const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
+        // 群友档案：投递前给每个发言人补一行"这个人是谁"。
+    // 以前每轮都在重新认识同一个人——他说"又加班"，我不知道这周已经第三次。
+    // 档案缺失就跳过，不让投递因为档案没建而失败。
+    try {
+      const senders = [...new Set(batch.map((m) => m.senderId).filter(Boolean))];
+      const profiles = [];
+      for (const uid of senders.slice(0, 6)) {
+        const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'profiles.mjs'), 'line', String(uid)], {
+          encoding: 'utf8',
+          timeout: 4000,
+        });
+        const text = (r.stdout || '').trim();
+        if (text) profiles.push(`${uid}：${text}`);
+      }
+      if (profiles.length) {
+        lines.push('（群友档案）');
+        for (const p of profiles) lines.push(`· ${p}`);
+        lines.push('');
+      }
+    } catch { /* 档案出错不影响投递 */ }
+
+const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
     const line = nowLine(Date.now(), {
       lastSeenMs: lastSeenMs,
       selfAwakeMs: state.lastDeliveryAt ?? 0,

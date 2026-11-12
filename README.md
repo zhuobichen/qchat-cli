@@ -122,7 +122,17 @@ qce search 论文 --from 10001000 --limit 50 --json
 }
 ```
 
-暴露五个工具：`search_messages`（关键词搜索）、`group_digest`（群日报）、`list_groups`（群列表）、`send_sticker`（发表情包）、`send_message`（发文字，两阶段确认）。
+暴露 16 个工具，常用的是：
+
+| 工具 | 作用 |
+|---|---|
+| `search_messages` / `group_digest` / `list_groups` | 只读：搜消息、出日报、列群 |
+| `recall_memory` / `remember_memory` | 长期记忆（写默认关闭） |
+| `send_message` / `send_sticker` / `send_image` | 发送，全部两阶段确认 + 白名单 |
+| `poke` | 戳一戳（私聊 / 群里戳指定人） |
+| `draw` | MiniMax 生图，返回落盘路径 |
+| `dispatch` | 把活派给子会话车道 |
+| `hex_*` | 海克斯大乱斗战绩（只读） |
 
 `send_sticker` 可以用 `intent`（"安慰一下"/"无语"/"庆祝"）让 **Jev 决策模型**从表情库里挑一张——它只做类型化选择并给出置信度，不会编造不存在的表情；没有 `JEV_API_KEY` 或接口失败时自动回退关键词匹配。
 
@@ -214,6 +224,15 @@ qce qzone feeds                          # QQ 空间：说说 / 评论 / 点赞
 qce napcat status                        # NapCat 进程管理
 ```
 
+**0）先看一眼它还好吗**
+
+```bash
+qce status            # 一屏：账号 / 会话探针 / 最后一条消息 / 禁言 / 三个常驻进程 / 今日掉线 / 待回复
+qce status --group 913807639
+```
+
+判定口径和 `scripts/qq-health.mjs` 一致：**看 friend_list 通不通，不看 `online`**——那个字段滞后，会骗人。
+
 **11）生图 / 戳一戳 / 把活派出去**
 
 ```bash
@@ -274,6 +293,22 @@ qce --help
 ```
 
 > 只有开机自启需求时才需要 `npm link`；也可以直接 `node dist/cli.js <命令>`。
+
+## 群友档案
+
+群里人会改名片、会重名，光看名字迟早认错人；而且每次被投递都只看到最近几条消息，
+等于每轮都在重新认识同一个人。
+
+```bash
+node scripts/profiles.mjs build                 # 从本地索引重算（条数 / 活跃时段 / 平均长度 / 图片比例）
+node scripts/profiles.mjs list --top 12
+node scripts/profiles.mjs show 1441816738       # 也可用名字片段
+node scripts/profiles.mjs set 1441816738 "爱接梗，最近在出差"
+node scripts/profiles.mjs drop 1441816738 出差
+```
+
+档案分两层：**stats 是机器事实**（从索引算），**traits 是我写下的判断**（带时间戳，一个人最多留 8 条）。
+`private/qq-watch.mjs` 投递时会自动给每个发言人补一行档案，没有档案就跳过，不影响投递。
 
 ## 隐私与安全
 

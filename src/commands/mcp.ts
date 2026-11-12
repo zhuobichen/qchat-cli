@@ -1,4 +1,7 @@
 import { Command } from 'commander';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { authManager } from '../core/auth.js';
@@ -142,6 +145,62 @@ function makeBackend(): McpBackend {
       };
     },
 
+    // ── 工具层的五个动作 ─────────────────────────────────
+    async sendImage({ kind, target, path: imgPath, url }) {
+      if (!safetyManager.isAllowed(target)) {
+        throw new Error(`会话 ${target} 未授权发送（先跑 qce safety allow ${target}）`);
+      }
+      let file = imgPath ?? '';
+      if (url) {
+        // 远程图先落到 output/memes，别写用户目录（低权限进程会 EPERM）
+        const dir = join(process.cwd(), 'output', 'memes');
+        mkdirSync(dir, { recursive: true });
+        const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw new Error(`下载图片失败 HTTP ${res.status}`);
+        const ctype = String(res.headers.get('content-type') ?? '');
+        const ext = ctype.includes('png') ? 'png' : ctype.includes('gif') ? 'gif' : ctype.includes('webp') ? 'webp' : 'jpg';
+        file = join(dir, `img-${Date.now()}.${ext}`);
+        writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+      }
+      if (!file) throw new Error('path 和 url 至少给一个');
+      const message = [{ type: 'image', data: { file } }] as any;
+      if (kind === 'group') await client.sendGroupMessage(target, message);
+      else await client.sendPrivateMessage(target, message);
+      return { ok: true, kind, target, file, sentAt: new Date().toISOString() };
+    },
+
+    async poke({ kind, target, userId }) {
+      if (!safetyManager.isAllowed(target)) {
+        throw new Error(`会话 ${target} 未授权（先跑 qce safety allow ${target}）`);
+      }
+      if (kind === 'group') {
+        if (!userId) throw new Error('群聊要带 userId');
+        await client.call('group_poke', { group_id: target, user_id: userId });
+        return { ok: true, kind, groupId: target, userId };
+      }
+      await client.call('friend_poke', { user_id: target });
+      return { ok: true, kind, target };
+    },
+
+    async draw({ prompt, aspectRatio, count }) {
+      const args = [join(ROOT, 'scripts', 'minimax-image.mjs'), prompt, '--ar', aspectRatio ?? '16:9', '--n', String(count ?? 1)];
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 240_000 });
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+      if (r.status !== 0) throw new Error(out.trim().slice(-300) || '生图失败');
+      const paths = out.split('\n').filter((l) => l.startsWith('IMAGE_PATH=')).map((l) => l.slice('IMAGE_PATH='.length).trim());
+      if (!paths.length) throw new Error('生图没有返回路径');
+      return { ok: true, images: paths, model: 'image-01', aspectRatio: aspectRatio ?? '16:9' };
+    },
+
+    async dispatch({ task, lane }) {
+      const args = [join(ROOT, 'scripts', 'dispatch.mjs'), 'new', task, '--lane', lane ?? 'cli'];
+      const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 60_000 });
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim();
+      if (r.status !== 0) throw new Error(out.slice(-300) || '派活失败');
+      const id = (out.match(/session-[0-9a-f-]{8,}/i) ?? [])[0] ?? '';
+      return { ok: true, lane: lane ?? 'cli', sessionId: id, output: out.split('\n').slice(-4).join('\n') };
+    },
+
     async listGroups() {
       const groups: any[] = (await client.getGroupList()) as any[];
       return (Array.isArray(groups) ? groups : []).map((g: any) => ({
@@ -236,6 +295,8 @@ function loadHexRoster(): HexRoster {
   }
   throw new Error('找不到 hex-roster.json（名单文件）');
 }
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export function mcpCommand(program: Command): void {
   program

@@ -17,7 +17,11 @@ function makeBackend(): McpBackend {
     hexTeamReport: vi.fn(async () => ({
       teams: [{ gameId: 11448890406, card: '【开黑播报】3 人一队 · 10 分钟前 · 赢了' }],
     })),
-    hexAnnounceNow: vi.fn(async ({ gameId }: any) => ({ ok: true, gameId })),
+    sendImage: vi.fn(async () => ({ ok: true })),
+  poke: vi.fn(async () => ({ ok: true })),
+  draw: vi.fn(async () => ({ ok: true, images: [] })),
+  dispatch: vi.fn(async () => ({ ok: true, sessionId: 'session-test' })),
+  hexAnnounceNow: vi.fn(async ({ gameId }: any) => ({ ok: true, gameId })),
   };
 }
 

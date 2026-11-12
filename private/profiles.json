@@ -1,0 +1,192 @@
+{
+  "updatedAt": "2026-11-12T05:42:29.247Z",
+  "people": {
+    "243876708": {
+      "name": "糯米天师",
+      "stats": {
+        "messages": 17,
+        "avgChars": 7,
+        "imageRatio": 0.18,
+        "activeDays": 4,
+        "activeHours": "0点 / 12点",
+        "firstAt": "2026-11-05T16:33:28.000Z",
+        "lastAt": "2026-11-09T04:11:04.000Z"
+      },
+      "traits": []
+    },
+    "292430085": {
+      "name": "木叶",
+      "stats": {
+        "messages": 6,
+        "avgChars": 6,
+        "imageRatio": 0.33,
+        "activeDays": 2,
+        "activeHours": "11点 / 17点",
+        "firstAt": "2026-11-08T09:17:03.000Z",
+        "lastAt": "2026-11-10T03:41:12.000Z"
+      },
+      "traits": []
+    },
+    "363541585": {
+      "name": "美咕噜单推人",
+      "stats": {
+        "messages": 37,
+        "avgChars": 12,
+        "imageRatio": 0.03,
+        "activeDays": 4,
+        "activeHours": "22点 / 17点",
+        "firstAt": "2026-11-06T16:40:39.000Z",
+        "lastAt": "2026-11-10T09:43:44.000Z"
+      },
+      "traits": []
+    },
+    "1071210749": {
+      "name": "程麟钧",
+      "stats": {
+        "messages": 1,
+        "avgChars": 3,
+        "imageRatio": 0,
+        "activeDays": 1,
+        "activeHours": "18点",
+        "firstAt": "2026-11-07T10:24:41.000Z",
+        "lastAt": "2026-11-07T10:24:41.000Z"
+      },
+      "traits": []
+    },
+    "1271851376": {
+      "name": "阳村纯鹿人",
+      "stats": {
+        "messages": 62,
+        "avgChars": 10,
+        "imageRatio": 0.06,
+        "activeDays": 5,
+        "activeHours": "14点 / 11点",
+        "firstAt": "2026-11-06T14:25:05.000Z",
+        "lastAt": "2026-11-10T09:34:00.000Z"
+      },
+      "traits": []
+    },
+    "1441001315": {
+      "name": "卓者如必",
+      "stats": {
+        "messages": 47,
+        "avgChars": 11,
+        "imageRatio": 0.23,
+        "activeDays": 5,
+        "activeHours": "14点 / 0点",
+        "firstAt": "2026-11-06T03:08:23.000Z",
+        "lastAt": "2026-11-10T09:25:22.000Z"
+      },
+      "traits": []
+    },
+    "1441816738": {
+      "name": "冷峰沉睡",
+      "stats": {
+        "messages": 156,
+        "avgChars": 19,
+        "imageRatio": 0.08,
+        "activeDays": 5,
+        "activeHours": "14点 / 1点",
+        "firstAt": "2026-11-05T16:31:39.000Z",
+        "lastAt": "2026-11-10T05:53:56.000Z"
+      },
+      "traits": [
+        {
+          "at": "2026-11-12T05:42:29.247Z",
+          "text": "群里话最多，爱接梗，最近在聊出差和加班"
+        }
+      ]
+    },
+    "1473517806": {
+      "name": "青春期彪儿不会遇上晟大爹",
+      "stats": {
+        "messages": 98,
+        "avgChars": 10,
+        "imageRatio": 0.31,
+        "activeDays": 5,
+        "activeHours": "1点 / 15点",
+        "firstAt": "2026-11-05T16:28:37.000Z",
+        "lastAt": "2026-11-10T11:41:25.000Z"
+      },
+      "traits": []
+    },
+    "1838721627": {
+      "name": "想要只精通c++的猫娘",
+      "stats": {
+        "messages": 13,
+        "avgChars": 26,
+        "imageRatio": 0,
+        "activeDays": 1,
+        "activeHours": "0点 / 1点",
+        "firstAt": "2026-11-06T16:37:21.000Z",
+        "lastAt": "2026-11-06T17:31:49.000Z"
+      },
+      "traits": []
+    },
+    "2209307507": {
+      "name": "哦，原来是这样",
+      "stats": {
+        "messages": 1,
+        "avgChars": 7,
+        "imageRatio": 0,
+        "activeDays": 1,
+        "activeHours": "19点",
+        "firstAt": "2026-11-07T11:07:00.000Z",
+        "lastAt": "2026-11-07T11:07:00.000Z"
+      },
+      "traits": []
+    },
+    "2659399795": {
+      "name": "an",
+      "stats": {
+        "messages": 2,
+        "avgChars": 8,
+        "imageRatio": 0,
+        "activeDays": 1,
+        "activeHours": "23点",
+        "firstAt": "2026-11-09T15:14:43.000Z",
+        "lastAt": "2026-11-09T15:15:24.000Z"
+      },
+      "traits": []
+    },
+    "2697439890": {
+      "name": "🐟哥",
+      "stats": {
+        "messages": 11,
+        "avgChars": 7,
+        "imageRatio": 0.18,
+        "activeDays": 2,
+        "activeHours": "11点 / 12点",
+        "firstAt": "2026-11-09T10:00:13.000Z",
+        "lastAt": "2026-11-10T04:02:52.000Z"
+      },
+      "traits": []
+    },
+    "2854197266": {
+      "name": "AL_1S",
+      "stats": {
+        "messages": 2,
+        "avgChars": 78,
+        "imageRatio": 0,
+        "activeDays": 1,
+        "activeHours": "0点",
+        "firstAt": "2026-11-05T16:28:12.000Z",
+        "lastAt": "2026-11-05T16:28:21.000Z"
+      },
+      "traits": []
+    },
+    "3572198554": {
+      "name": "carl",
+      "stats": {
+        "messages": 4,
+        "avgChars": 11,
+        "imageRatio": 0,
+        "activeDays": 2,
+        "activeHours": "11点 / 14点",
+        "firstAt": "2026-11-09T03:35:25.000Z",
+        "lastAt": "2026-11-10T06:27:50.000Z"
+      },
+      "traits": []
+    }
+  }
+}
