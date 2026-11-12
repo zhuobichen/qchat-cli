@@ -136,3 +136,19 @@ Pixel art architecture diagram, 8-bit retro game UI, deep navy starfield backgro
 - 换字重：只改 `ultra heavy display face` / `chunky bold` / `thin neon outline` 这一句。
 - 一次只改一个变量，否则出问题看不出是哪个的锅。
 - 中文别让模型画：偏旁必崩，要中文副标题就用 PIL 叠（见 `scripts/make-brand.py`）。
+
+
+---
+
+## 四、架构图定稿：参考 weflow-cli 的横向色带版式
+
+生图模型在架构图上反复翻车（见上面三张证据图），最后放弃让模型画架构图，改成**版式参考 + 代码生成**：
+
+- 版式抄 weflow-cli 的 `docs/images/weflow-architecture.png`：通栏色带、标题行（分层名 + `|` 分隔的条目）、
+  图标格、虚线边界框、箭头
+- 生成脚本 `scripts/make-architecture-bands.py`（PIL，2 倍超采样再缩，边缘干净）
+
+好处是改了组件名重跑一次就行，不用重新抽卡；坏处是这张图不再“模型生成”，
+但它的作用是把事实说清楚，不是氛围图，所以这个取舍是值的。
+
+品牌图（logo + 文字）仍然完全由模型生成——那部分要的是质感，文字只有九个字母，模型扛得住。
