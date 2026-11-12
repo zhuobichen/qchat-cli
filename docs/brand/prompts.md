@@ -101,6 +101,35 @@ Minimal cyberpunk system diagram on black, HORIZONTAL flow left to right, wide 1
 Cyberpunk layered architecture diagram on black, portrait-ish layout filling the whole 16:9 frame, six glowing neon boxes connected by glowing arrows top to bottom. Each box has ONE large bold sans-serif white word, spelled exactly: top box 'QQ', second wide box 'NapCat', two small boxes under it 'HTTP' and 'WS', one large panel 'qce', and at the bottom 'storage'. Inside the qce panel only empty neon squares with no text. Large legible typography, the words big enough to read at a glance, no other words, no numbers, no gibberish, crisp vector neon lines, balanced composition that fills the canvas
 ```
 
+### 像素风这一轮（最终采用）
+
+| 尝试 | 标签量 | 结果 |
+|---|---|---|
+| arch-pixel-1 | 0 个字（纯图标） | 画面很香：企鹅 → 方块 → 磁盘，但只是图标条，不是架构图 |
+| arch-pixel-2 | 4 个大字 | **全对**：QQ / NapCat / qce / storage ——最终采用这版 |
+| arch-pixel-3 | 6 个字 | 当场崩：`HarCat:`、`Haeat`、`OCIS`、`Fastt` |
+
+结论没变：**4 个大字是这套模型的上限。** 所以架构图只画四层，
+组件清单放 README 文字里——图负责一眼看懂，文字负责说清。
+
+#### arch-pixel-1
+
+```text
+16-bit pixel art architecture diagram, retro game UI style, on a dark navy background. Three chunky pixel blocks connected left to right by pixel arrows: the first block is a small penguin monitor sprite, the second is a bigger block with tiny pixel chips inside, the third is a stack of pixel disk icons. Above the blocks there is ONE line of pixel-font text reading exactly 'qchat-cli'. Big visible pixels, limited palette (navy, cyan, magenta, cream), chunky black outlines, crisp nearest-neighbor pixels, no anti-aliasing, no extra words, no gibberish
+```
+
+#### arch-pixel-2
+
+```text
+Pixel art architecture diagram, 8-bit retro game UI, dark navy background with dithered texture. Four chunky pixel boxes arranged in a vertical stack, connected by thick pixel arrows pointing down. Each box contains ONE short English label in large pixel font, spelled exactly: top box 'QQ', second box 'NapCat', third (widest) box 'qce', bottom box 'storage'. Boxes have thick 3px dark outlines and light bevel highlights, palette limited to navy, cyan, magenta, cream. Big visible pixels, no anti-aliasing, no extra words, no numbers, no gibberish, balanced composition filling the frame
+```
+
+#### arch-pixel-3
+
+```text
+Pixel art architecture diagram, 8-bit retro game UI, deep navy starfield background. Vertical layered stack of six chunky pixel boxes with thick dark outlines and bevel highlights, connected by thick pixel arrows: 'QQ' at top, then a wide 'NapCat' box, then TWO small boxes side by side labelled 'HTTP' and 'WS', then a wide 'qce' box, then 'storage' at the bottom. Every label in large readable pixel font, spelled exactly, palette limited to navy, teal, magenta, cream. Big pixels, no anti-aliasing, no extra words, no numbers, no gibberish, composition centred and filling the frame
+```
+
 ## 三、复用/改造建议
 
 - 换配色：只改颜色词（`cyan and magenta` → `acid green and violet`），构图别动。

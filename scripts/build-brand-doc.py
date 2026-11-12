@@ -15,6 +15,7 @@ def clean(r):
 
 logos = [r for r in rows if r['outputs'] and r['outputs'][0].startswith('logo-')]
 archs = [r for r in rows if r['outputs'] and r['outputs'][0].startswith('arch-ai')]
+pixels = [r for r in rows if r['outputs'] and r['outputs'][0].startswith('arch-pixel')]
 
 logo_notes = {
     'logo-cp-1': '细霓虹描边，字偏细，图标小',
@@ -95,6 +96,33 @@ for r in archs:
     out.append(clean(r))
     out.append('```')
     out.append('')
+if pixels:
+    out.append('### 像素风这一轮（最终采用）')
+    out.append('')
+    out.append('| 尝试 | 标签量 | 结果 |')
+    out.append('|---|---|---|')
+    pix = {
+        'arch-pixel-1': ('0 个字（纯图标）', '画面很香：企鹅 → 方块 → 磁盘，但只是图标条，不是架构图'),
+        'arch-pixel-2': ('4 个大字', '**全对**：QQ / NapCat / qce / storage ——最终采用这版'),
+        'arch-pixel-3': ('6 个字', '当场崩：`HarCat:`、`Haeat`、`OCIS`、`Fastt`'),
+    }
+    for r in pixels:
+        name = r['outputs'][0].rsplit('.', 1)[0]
+        q, res = pix.get(name, ('?', '?'))
+        out.append(f'| {name} | {q} | {res} |')
+    out.append('')
+    out.append('结论没变：**4 个大字是这套模型的上限。** 所以架构图只画四层，')
+    out.append('组件清单放 README 文字里——图负责一眼看懂，文字负责说清。')
+    out.append('')
+    for r in pixels:
+        name = r['outputs'][0].rsplit('.', 1)[0]
+        out.append(f"#### {name}")
+        out.append('')
+        out.append('```text')
+        out.append(clean(r))
+        out.append('```')
+        out.append('')
+
 out.append('## 三、复用/改造建议')
 out.append('')
 out.append('- 换配色：只改颜色词（`cyan and magenta` → `acid green and violet`），构图别动。')
