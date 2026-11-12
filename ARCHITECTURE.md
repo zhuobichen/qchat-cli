@@ -1,5 +1,10 @@
 # 项目架构文档
 
+![qchat-cli 架构](./docs/images/architecture.png)
+
+> 这张图由 `scripts/make-architecture.py` 生成：底图是 MiniMax 出的氛围图，
+> 框线与文字由代码叠上去——生图模型画不准组件名，架构图里一个字错了就是误导。
+
 ## 目录
 
 - [整体架构](#整体架构)

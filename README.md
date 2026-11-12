@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1>qchat-cli &nbsp;<img src="./logo.png" width="72" valign="middle" alt="qchat-cli logo" /></h1>
+<img src="./docs/images/brand.png" alt="qchat-cli" width="760" />
 
-**把 QQ 里发生过的事，变成可导出、可监听、可自动化的数据**
+<br/>
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
@@ -17,6 +17,17 @@
 </div>
 
 ![qce 终端演示](./docs/images/demo.png)
+
+## 架构
+
+![qchat-cli 架构](./docs/images/architecture.png)
+
+- **qce 工具层**：所有动作只有一种参数写法、一种返回格式；CLI 和 MCP 共用这一层，上层出问题时能退回到这一层查。
+- **两条通道**：HTTP `:3000` 负责调用与历史，WebSocket 负责事件推送——戳一戳、新消息都靠它。
+- **本地优先**：`.qce-index/` 存消息索引（搜索/日报不联网），`private/` 存表情库、梗库、记忆、规则、人格，`output/` 存导出与生成产物。
+- **常驻旁路**：`qq-watch` 把新消息投进会话、`qq-watchdog` 体检与熔断、`qq-poke-watch` 收戳并还手、`dispatch` 车道把写代码的活丢给独立会话。
+
+细节见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 `qce` 是一个跑在你自己电脑上的 QQ 命令行工具。它不做“点一下导出”的按钮，而是把 QQ 账号变成一个**可编程的数据源**：导出可读的聊天记录、实时监听消息、按规则自动回复、把群聊接进 AI，也能做群管理和 QQ 空间的事。
 
@@ -52,7 +63,7 @@ $ qce export 123456789 --format md
 
 真实输出（节选自本机运行）：导出会保留时间、发言人、正文，并把图片/表情/语音转成占位符，直接可读。
 
-## 四种典型用法
+## 典型用法
 
 **1）导出归档** —— JSON / TXT / HTML / CSV / Markdown，支持时间范围与条数限制
 
@@ -200,6 +211,35 @@ qce admin mute <群号> <QQ号> 30          # 群管理：禁言/踢人/设管�
 qce qzone feeds                          # QQ 空间：说说 / 评论 / 点赞
 qce napcat status                        # NapCat 进程管理
 ```
+
+**11）生图 / 戳一戳 / 把活派出去**
+
+```bash
+qce draw "深夜城市上空游过的鲸鱼" --ar 16:9    # MiniMax image-01，几秒出图
+qce pic group:123456789 output/gen/whale.jpg    # 直接发进群
+
+qce poke group:123456789 10001000               # 群里戳一戳
+qce poke user:10001000                          # 私聊戳
+
+qce dispatch new "把 README 的安装步骤补全" --lane cli     # 派给独立会话干
+qce dispatch lanes                                        # 三条车道谁在跑
+```
+
+`dispatch` 是为"聊天"和"干活"分开设计的：写代码、做分析的活丢给另一个会话（`D:\qq助手`
+下各自的车道），几十个工具调用的输出不会灌进聊天上下文，干完只把结论带回来。
+
+**12）掉线了会自己爬起来**
+
+```bash
+node scripts/qq-watchdog.mjs          # 常驻：每 120 秒体检
+node scripts/qq-watch.mjs             # 常驻：新消息投递
+node scripts/qq-poke-watch.mjs --pvp  # 常驻：收戳 + 自动还手
+```
+
+判定不看 `online` 标志（它滞后），而是看真实的会话探针：`get_friend_list` 返空、
+`get_group_member_info` 返 null 都算"半死"。恢复策略是**有限次重启 + 熔断**：
+连续 3 次起不来就停手，把二维码私聊推给你等人扫——而不是两分钟一轮硬拉，
+那只会招来更严格的风控。凌晨 02:00–07:00 一律不自动重启。
 
 发送与高风险管理操作默认关闭，必须先显式开启并授权目标会话：
 
