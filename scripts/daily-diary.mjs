@@ -109,11 +109,18 @@ const hours = sameDay.map((r) => new Date(r.time * 1000).getHours());
 const firstH = Math.min(...hours);
 const lastH = Math.max(...hours);
 
-/** 挑几条有内容的话（太短的"哈哈哈"不算），按时间排 */
-const meaty = sameDay
-  .filter((r) => (r.text || '').trim().length >= 12)
-  .sort((a, b) => (b.text || '').length - (a.text || '').length)
-  .slice(0, 6)
+/**
+ * 挑几条有内容的话（太短的"哈哈哈"不算），按时间排。
+ *
+ * 优先**只挑别人的**：我的回复本来就长，按长度排序必然全是我——那样写出来
+ * 不像群聊纪实，像我的发言集锦。只有在别人凑不够时才把我的补进来。
+ */
+const SELF = '2396130865';
+const others = sameDay.filter((r) => String(r.senderId) !== SELF && (r.text || '').trim().length >= 12);
+const mine = sameDay.filter((r) => String(r.senderId) === SELF && (r.text || '').trim().length >= 12);
+const pick = (rows, n) => rows.sort((a, b) => (b.text || '').length - (a.text || '').length).slice(0, n);
+
+const meaty = [...pick(others, 6), ...(others.length >= 4 ? [] : pick(mine, 6 - others.length))]
   .sort((a, b) => a.time - b.time);
 
 const fmt = (t) => {
