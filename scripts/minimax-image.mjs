@@ -25,7 +25,8 @@ function flag(name, def = '') {
   return i >= 0 ? (argv[i + 1] ?? def) : def;
 }
 const has = (name) => argv.includes(`--${name}`);
-const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && ['--ar', '--n', '--name', '--model', '--out'].includes(argv[i - 1])));
+// --note 也要排除：不然备注会被当成提示词的一部分发出去，出一堆莫名其妙的图。
+const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && ['--ar', '--n', '--name', '--model', '--out', '--note'].includes(argv[i - 1])));
 
 const prompt = positional.join(' ').trim();
 if (!prompt) {

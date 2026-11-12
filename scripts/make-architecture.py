@@ -9,7 +9,7 @@
 产物：docs/images/architecture.png
 """
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "docs", "images", "architecture.png")
@@ -20,15 +20,15 @@ F_MONO = r"C:\Windows\Fonts\consola.ttf"
 
 W, H = 1680, 1220
 BG = (11, 18, 32)
-PANEL = (20, 30, 48)
-PANEL2 = (24, 36, 58)
-BORDER = (44, 62, 90)
+PANEL = (10, 12, 20)
+PANEL2 = (14, 18, 30)
+BORDER = (52, 70, 104)
 WHITE = (238, 244, 252)
 MUTED = (150, 170, 196)
-TEAL = (64, 224, 208)
-AMBER = (255, 196, 96)
-VIOLET = (166, 148, 255)
-PINK = (255, 128, 168)
+TEAL = (0, 255, 214)
+AMBER = (255, 191, 0)
+VIOLET = (186, 104, 255)
+PINK = (255, 42, 138)
 
 
 def font(path, size):
@@ -79,6 +79,12 @@ def background():
 
 def main():
     img = background()
+
+    # 发光层：所有线条先在透明层画一遍，模糊后叠回去，就是霓虹味。
+    # 直接在原图上画不出辉光，得单独画一层。
+    glow = Image.new("RGB", (W, H), (0, 0, 0))
+    dg = ImageDraw.Draw(glow)
+
     d = ImageDraw.Draw(img)
 
     f_h1 = font(F_BD, 44)
@@ -177,6 +183,11 @@ def main():
 
     # 外部服务角标
     d.text((70, 1180), "外部 API：千问视觉 · MiniMax image-01 · DeepSeek", font=font(F_RG, 17), fill=MUTED)
+
+    # 霓虹辉光：拿整张图糊一层再 screen 回去，亮线周围就有光晕。
+    # 比给每个框单独画外发光省事，观感也统一。
+    bloom = img.filter(ImageFilter.GaussianBlur(7))
+    img = ImageChops.screen(img, bloom)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     img.save(OUT, "PNG", optimize=True)
