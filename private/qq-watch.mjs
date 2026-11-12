@@ -618,6 +618,8 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
     // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
     // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
     lines.push('回复前先读 private/personas/global.md ——那是我说话的样子，不是参考资料。不读就别开口。');
+    // 派活规则也钉在投递里：只写进 rules.md 容易忘，聊天里根本想不起去翻。
+    lines.push('（对方要的是"做软件"——写脚本/改代码/做工具/清洗数据——按 private/rules.md 第 11 节派活，别在聊天会话里现做。）');
     // 行数写死过一次，人格一改就变成假情报（写 178 行时实际已经 198 行），所以只给路径。
     lines.push('（要发弱智吧那种段子，再打开仓库根目录的 identity_弱智吧.md，别凭印象现编。）');
     lines.push(head.kind === 'private'
