@@ -37,6 +37,7 @@ const CONFIG_PATH = join(ROOT, 'private', 'qq-watch.config.json');
 // 状态文件路径可用环境变量覆盖。为什么要它：这台机器上有个看不见的旧实例
 // （没有 node 进程，但日志每秒在写）占着原来的 state 和 log，
 // 起新实例必须让它走自己的文件，否则两边互相踩、消息重复推。
+const buffers = new Map();          // peerKey → { items, lastAt }：静默合并用
 const STATE_PATH = process.env.QCE_WATCH_STATE || join(ROOT, 'private', 'qq-watch.state.json');
 const INBOX = join(ROOT, 'output', 'qq-inbox.jsonl');
 const LOG_PATH = process.env.QCE_WATCH_LOG || join(ROOT, 'output', 'qq-watch.log');
@@ -80,6 +81,9 @@ function loadConfig() {
     ignorePeers: Array.isArray(raw.ignorePeers) ? raw.ignorePeers.map(String) : [],
     contextMessages: raw.contextMessages ?? 6,
     maxPerPoll: Math.max(raw.maxPerPoll ?? 40, 1),
+    // 静默窗口：这段时间内没有新消息，才把攒着的合并成一条投递
+    coalesceSec: Math.max(raw.coalesceSec ?? 25, 3),
+    coalesceMentionSec: Math.max(raw.coalesceMentionSec ?? 6, 2),
     // —— 可靠性参数 ——
     // 投递重试
     deliverAttempts: Math.max(raw.deliverAttempts ?? 3, 1),
@@ -493,6 +497,103 @@ async function poll() {
   }
 }
 
+async function deliverBatch(batch) {
+  const head = batch[0];
+  const lines = [];
+
+  // 时间先摆出来。为什么要它：今早我把"14 小时没新消息"判成"群里没人说话"，
+  // 实际是 QQ 掉了。光有分钟数不够，得有时段语义 + 掉线提示。
+      // 群友档案：投递前给每个发言人补一行"这个人是谁"。
+  // 以前每轮都在重新认识同一个人——他说"又加班"，我不知道这周已经第三次。
+  // 档案缺失就跳过，不让投递因为档案没建而失败。
+  try {
+    const senders = [...new Set(batch.map((m) => m.senderId).filter(Boolean))];
+    const profiles = [];
+    for (const uid of senders.slice(0, 6)) {
+      const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'profiles.mjs'), 'line', String(uid)], {
+        encoding: 'utf8',
+        timeout: 4000,
+      });
+      const text = (r.stdout || '').trim();
+      if (text) profiles.push(`${uid}：${text}`);
+    }
+    if (profiles.length) {
+      lines.push('（群友档案）');
+      for (const p of profiles) lines.push(`· ${p}`);
+      lines.push('');
+    }
+  } catch { /* 档案出错不影响投递 */ }
+
+const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
+  const line = nowLine(Date.now(), {
+    lastSeenMs: lastSeenMs,
+    selfAwakeMs: state.lastDeliveryAt ?? 0,
+  });
+  lines.push(`（${line}）`);
+
+  if (head.kind === 'private') {
+    lines.push(`【私聊 ${head.sender}】`);
+  } else {
+    const at = batch.some((m) => m.mentioned);
+    const senders = [...new Set(batch.map((m) => m.sender))].join('、');
+    lines.push(`【群 ${head.peerName}】${senders}${at ? ' 提及你' : ''}：`);
+  }
+
+  if (batch.length === 1) {
+    // 引用先摆出来，再摆他说的话——顺序反了会让人以为引用是正文
+    if (head.quotedText) {
+      lines.push(`（${head.sender} 引用了 ${head.quotedFrom}：${head.quotedText}）`);
+    }
+    lines.push(head.text);
+    if (head.imageDesc) {
+      lines.push(`（图里是：${head.imageDesc}）`);
+    }
+    if (head.context?.length) {
+      lines.push('（最近上下文）');
+      for (const c of head.context) lines.push(`${c.sender}(${c.senderId ?? '?'}): ${c.text}`);
+    }
+  } else {
+    for (const m of batch) {
+      const t = new Date(m.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+      if (m.quotedText) {
+        lines.push(`[${t}] （引用 ${m.quotedFrom}：${m.quotedText}）`);
+      }
+      // 带 QQ 号：显示名会改、会重名，光看名字迟早认错人
+      lines.push(`[${t}] ${m.sender}(${m.senderId ?? '?'}): ${m.text}`);
+      if (m.imageDesc) lines.push(`[${t}] （图里是：${m.imageDesc}）`);
+    }
+  }
+
+  lines.push('');
+  // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
+  // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
+  lines.push('回复前先读 private/personas/global.md ——那是我说话的样子，不是参考资料。不读就别开口。');
+  // 行数写死过一次，人格一改就变成假情报（写 178 行时实际已经 198 行），所以只给路径。
+  lines.push('（要发弱智吧那种段子，再打开仓库根目录的 identity_弱智吧.md，别凭印象现编。）');
+  // 回复口径：一批消息默认只回一条。
+  // 以前每条都给一次投递，我就每条都回一遍，像复读机；现在攒成一批，
+  // 就得明确「回几条由内容决定」，别机械地对每句话各回一句。
+  const speakers = new Set(batch.map((m) => m.senderId)).size;
+  if (batch.length > 2) {
+    lines.push(`这轮攒了 ${batch.length} 条（${speakers} 个人在说）。一般回一条就够；只有两件事互不相干，才分开回。`);
+  }
+  lines.push(head.kind === 'private'
+    ? '要回就回，不想回可以 skip。'
+    : (batch.some((m) => m.mentioned)
+      ? '群里有人 @你，判断怎么回。'
+      : '没 @你；要不要接话由你判断，不接就 skip。'));
+
+  const text = lines.join(String.fromCharCode(10));
+  appendInbox(batch);
+  try {
+    await deliver(text);
+    log(`即时投递 ${batch.length} 条: ${head.kind} ${head.peer}`);
+  } catch (e) {
+    pushDlq('urgent', { text, message: head }, e);
+    log(`投递失败(已入死信): ${head.kind} ${head.peer}: ${e.message}`);
+  }
+}
+
 async function runOnce() {
   state.stats.polls += 1;
   // 掉线检测：get_login_info 掉线时仍返回缓存信息，只有 get_status.online 会变 false。
@@ -532,105 +633,30 @@ async function runOnce() {
     log('轮询失败: ' + e.message);
   }
 
-  // 全部消息即时投递（按 peer 合并，同一批到达的拼成一条）
+  // 同一会话的消息先进缓冲，静默一段时间再一起投递。
   //
-  // 为什么按 peer 合并而不是逐条发：一分钟来 5 条会变成 5 个独立请求，
-  // 每次都要重新读上下文。合并成一条，一次看全，回复也更连贯。
-  const byPeer = new Map();
+  // 为什么不再「每次轮询就发一条」：别人连续发五条，会变成五次请求，
+  // 我每条都回一遍——像复读机。合并成一批，回一条就够。
+  // 有人 @ 我的：等得短（COALESCE_MENTION），别让人干等。
+  // 其余：等 COALESCE_SEC 秒没新消息再发。
   for (const m of fresh) {
     const key = `${m.kind}:${m.peer}`;
-    if (!byPeer.has(key)) byPeer.set(key, []);
-    byPeer.get(key).push(m);
+    const b = buffers.get(key) ?? { items: [], lastAt: 0 };
+    b.items.push(m);
+    b.lastAt = Date.now();
+    buffers.set(key, b);
   }
 
-  for (const [, batch] of byPeer) {
-    const head = batch[0];
-    const lines = [];
+  const nowTs = Date.now();
+  for (const [key, b] of [...buffers.entries()]) {
+    const idle = (nowTs - b.lastAt) / 1000;
+    const mentioned = b.items.some((m) => m.mentioned);
+    const waitFor = mentioned ? cfg.coalesceMentionSec : cfg.coalesceSec;
+    const forced = b.items.length >= 12;                 // 攒太多就别再等
+    if (idle < waitFor && !forced) continue;
 
-    // 时间先摆出来。为什么要它：今早我把"14 小时没新消息"判成"群里没人说话"，
-    // 实际是 QQ 掉了。光有分钟数不够，得有时段语义 + 掉线提示。
-        // 群友档案：投递前给每个发言人补一行"这个人是谁"。
-    // 以前每轮都在重新认识同一个人——他说"又加班"，我不知道这周已经第三次。
-    // 档案缺失就跳过，不让投递因为档案没建而失败。
-    try {
-      const senders = [...new Set(batch.map((m) => m.senderId).filter(Boolean))];
-      const profiles = [];
-      for (const uid of senders.slice(0, 6)) {
-        const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'profiles.mjs'), 'line', String(uid)], {
-          encoding: 'utf8',
-          timeout: 4000,
-        });
-        const text = (r.stdout || '').trim();
-        if (text) profiles.push(`${uid}：${text}`);
-      }
-      if (profiles.length) {
-        lines.push('（群友档案）');
-        for (const p of profiles) lines.push(`· ${p}`);
-        lines.push('');
-      }
-    } catch { /* 档案出错不影响投递 */ }
-
-const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
-    const line = nowLine(Date.now(), {
-      lastSeenMs: lastSeenMs,
-      selfAwakeMs: state.lastDeliveryAt ?? 0,
-    });
-    lines.push(`（${line}）`);
-
-    if (head.kind === 'private') {
-      lines.push(`【私聊 ${head.sender}】`);
-    } else {
-      const at = batch.some((m) => m.mentioned);
-      const senders = [...new Set(batch.map((m) => m.sender))].join('、');
-      lines.push(`【群 ${head.peerName}】${senders}${at ? ' 提及你' : ''}：`);
-    }
-
-    if (batch.length === 1) {
-      // 引用先摆出来，再摆他说的话——顺序反了会让人以为引用是正文
-      if (head.quotedText) {
-        lines.push(`（${head.sender} 引用了 ${head.quotedFrom}：${head.quotedText}）`);
-      }
-      lines.push(head.text);
-      if (head.imageDesc) {
-        lines.push(`（图里是：${head.imageDesc}）`);
-      }
-      if (head.context?.length) {
-        lines.push('（最近上下文）');
-        for (const c of head.context) lines.push(`${c.sender}(${c.senderId ?? '?'}): ${c.text}`);
-      }
-    } else {
-      for (const m of batch) {
-        const t = new Date(m.time * 1000).toLocaleTimeString('zh-CN', { hour12: false });
-        if (m.quotedText) {
-          lines.push(`[${t}] （引用 ${m.quotedFrom}：${m.quotedText}）`);
-        }
-        // 带 QQ 号：显示名会改、会重名，光看名字迟早认错人
-        lines.push(`[${t}] ${m.sender}(${m.senderId ?? '?'}): ${m.text}`);
-        if (m.imageDesc) lines.push(`[${t}] （图里是：${m.imageDesc}）`);
-      }
-    }
-
-    lines.push('');
-    // 每次都钉一遍：不读人格就开口，等于换了个 AI 在替我说话。
-    // 号主 2026-11-10 明确要求「每次回复都要读人格文档」，所以不靠自觉，写进投递文本里。
-    lines.push('回复前先读 private/personas/global.md ——那是我说话的样子，不是参考资料。不读就别开口。');
-    // 行数写死过一次，人格一改就变成假情报（写 178 行时实际已经 198 行），所以只给路径。
-    lines.push('（要发弱智吧那种段子，再打开仓库根目录的 identity_弱智吧.md，别凭印象现编。）');
-    lines.push(head.kind === 'private'
-      ? '要回就回，不想回可以 skip。'
-      : (batch.some((m) => m.mentioned)
-        ? '群里有人 @你，判断怎么回。'
-        : '没 @你；要不要接话由你判断，不接就 skip。'));
-
-    const text = lines.join(String.fromCharCode(10));
-    appendInbox(batch);
-    try {
-      await deliver(text);
-      log(`即时投递 ${batch.length} 条: ${head.kind} ${head.peer}`);
-    } catch (e) {
-      pushDlq('urgent', { text, message: head }, e);
-      log(`投递失败(已入死信): ${head.kind} ${head.peer}: ${e.message}`);
-    }
+    buffers.delete(key);
+    await deliverBatch(b.items);
   }
 
   // 全部入待回复队列（要不要回由会话里的我判断）
