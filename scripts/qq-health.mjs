@@ -90,7 +90,7 @@ async function main() {
   r.checks.processes = { QQ: procCount('QQ.exe'), NapCat: procCount('NapCatWinBootMain.exe') };
   if (!r.checks.port) {
     r.verdict = 'down';
-    r.advice = 'NapCat 没启动或 :3000 没监听 → 跑 start-napcat-admin-fixed.cmd';
+    r.advice = 'NapCat 没启动或 :3000 没监听 → 跑 ops/start-napcat-admin-fixed.cmd';
     return finish(r, 2);
   }
 

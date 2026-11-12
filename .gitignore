@@ -115,3 +115,6 @@ private/minimax.config.json
 # 运行时状态（水位 / 待回复队列）
 private/qq-watch.state.json
 private/.queue/
+
+# 历史垃圾（老二维码截图 / 日志 / 一次性探针），保留但不进库
+archive/
