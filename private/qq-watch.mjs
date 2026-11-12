@@ -75,6 +75,10 @@ function loadConfig() {
     dshKey: raw.dshKey ?? process.env.DSH_SUPERVISOR_KEY ?? '',
     sessionId: raw.sessionId,
     intervalSec: Math.max(raw.intervalSec ?? 1, 1),
+    // 轮询间隔改成 10–15 秒随机：固定 1 秒轮询一天要打十几万次接口，
+    // 又吵又容易招风控。随机间隔像人，也省资源。
+    intervalMinSec: Math.max(raw.intervalMinSec ?? 10, 2),
+    intervalMaxSec: Math.max(raw.intervalMaxSec ?? 15, Math.max(raw.intervalMinSec ?? 10, 2)),
     groups: Array.isArray(raw.groups) ? raw.groups.map(Number) : [],
     includePrivate: raw.includePrivate !== false,
     ignorePeers: Array.isArray(raw.ignorePeers) ? raw.ignorePeers.map(String) : [],
@@ -657,7 +661,7 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
 }
 
 // ————— 启动 —————
-log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalSec}s 轮询，全部消息即时投递`);
+log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalMinSec}~${cfg.intervalMaxSec}s 随机轮询，全部消息即时投递`);
 log(`覆盖：私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.length ? cfg.groups.join(',') : '全部'}`);
 log(`回补窗口 ${cfg.catchUpHours}h，熔断阈值 ${cfg.breakerThreshold}，重试 ${cfg.deliverAttempts} 次`);
 
@@ -684,5 +688,8 @@ while (!stopping) {
   } catch (e) {
     log('轮询异常: ' + e.message);
   }
-  await sleep(cfg.intervalSec * 1000);
+  // 每轮重新抽一个间隔：10~15 秒之间随机。
+  // 固定间隔的请求节奏太规整，长期看像脚本；随机一点更像人在刷。
+  const waitSec = cfg.intervalMinSec + Math.random() * (cfg.intervalMaxSec - cfg.intervalMinSec);
+  await sleep(waitSec * 1000);
 }
