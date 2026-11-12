@@ -146,36 +146,203 @@ const fmt = (t) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const myMsgs = sameDay.filter((r) => String(r.senderId) === '2396130865');
+const myMsgs = sameDay.filter((r) => String(r.senderId) === SELF);
 
-const lines = [];
-lines.push(`${sameDay.length} 条消息，${bySender.size} 个人说话，从 ${firstH} 点到 ${lastH} 点。`);
-lines.push(
-  '说得最多的是' +
-    ranked
-      .slice(0, 4)
-      .map(([n, c]) => `${n}（${c} 条）`)
-      .join('、') +
-    '。',
-);
-lines.push('');
-lines.push('今天最长的几句：');
-for (const r of meaty) {
-  const t = (r.text || '').replace(/\s+/g, ' ').slice(0, 90);
-  lines.push(`${fmt(r.time)} ${r.senderName || r.senderId}：${t}`);
+// ── 素材：日记要写"我这一天"，不是写群统计 ──────────────
+// 老版本只会算条数和挑长句，读起来像体检报告。人写日记写的是：
+// 今天谁惹我了、我干了什么蠢事、什么让我窝了一下，以及一句"算了"。
+const qq = '2396130865';
+const talkedToMe = sameDay.filter((r) => {
+  const t = r.text || '';
+  return t.includes(qq) || t.includes('逆天赛博') || t.includes('朝闻');
+});
+
+// 我回复过的那些来回（时间序：别人说 → 我说）
+const exchanges = [];
+for (let i = 0; i < sameDay.length; i += 1) {
+  const r = sameDay[i];
+  if (String(r.senderId) !== SELF) continue;
+  const prevOther = [...sameDay.slice(0, i)].reverse().find((x) => String(x.senderId) !== SELF);
+  if (prevOther) {
+    exchanges.push({
+      them: `${prevOther.senderName}: ${(prevOther.text || '').replace(/\s+/g, ' ').slice(0, 70)}`,
+      me: (r.text || '').replace(/\s+/g, ' ').slice(0, 90),
+    });
+  }
 }
-if (myMsgs.length) {
+
+// 今天发生在我身上的"事件"：掉线、派活
+// 掉线只数真正的 down：healthy 的体检行混进来会让数字翻几倍（第一版就踩了）。
+function countDrops(day) {
+  const f = path.join(ROOT, 'output', 'qq-drops.csv');
+  if (!fs.existsSync(f)) return 0;
+  return fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.includes(day) && l.includes('down')).length;
+}
+function readDispatch(day) {
+  const f = path.join(ROOT, 'output', 'dispatch.log');
+  if (!fs.existsSync(f)) return [];
+  return fs.readFileSync(f, 'utf8').split('\n')
+    .filter((l) => l.includes(day.replace(/-/g, '/')) || l.includes(day))
+    .slice(-8)
+    .map((l) => l.replace(/\s+/g, ' ').slice(0, 90));
+}
+const dropCount = countDrops(target);
+const dispatches = readDispatch(target);
+
+const material = [
+  `日期：${target}`,
+  `群里共 ${sameDay.length} 条消息，${bySender.size} 个人说话，时间跨度 ${firstH} 点到 ${lastH} 点。`,
+  talkedToMe.length
+    ? `有人对我说话/提到我的 ${talkedToMe.length} 处，例如：\n` +
+      talkedToMe.slice(0, 6).map((r) => `  ${fmt(r.time)} ${r.senderName}: ${(r.text || '').replace(/\s+/g, ' ').slice(0, 80)}`).join('\n')
+    : '当天没有人直接点我名。',
+  `我自己说了 ${myMsgs.length} 条。几句原话：\n` +
+    myMsgs.slice(-6).map((r) => `  ${fmt(r.time)} 我说：${(r.text || '').replace(/\s+/g, ' ').slice(0, 90)}`).join('\n'),
+  exchanges.length
+    ? `别人对我说、我怎么回的（抽样）：\n` + exchanges.slice(-8).map((e) => `  他：${e.them}\n  我：${e.me}`).join('\n')
+    : '',
+  `今天掉线次数：${dropCount}（精确统计，写进日记要一字不差；为 0 就别提掉线这事）`,
+  dispatches.length ? `我派出去干活/收活的记录：\n${dispatches.map((d) => '  ' + d).join('\n')}` : '',
+  meaty.length ? `当天别人说过的几句有内容的话：\n` + meaty.map((r) => `  ${fmt(r.time)} ${r.senderName}: ${(r.text || '').replace(/\s+/g, ' ').slice(0, 70)}`).join('\n') : '',
+].filter(Boolean).join('\n\n');
+
+function statsBody() {
+  const lines = [];
+  lines.push(`${sameDay.length} 条消息，${bySender.size} 个人说话，从 ${firstH} 点到 ${lastH} 点。`);
+  lines.push('说得最多的是' + ranked.slice(0, 4).map(([n, c]) => `${n}（${c} 条）`).join('、') + '。');
   lines.push('');
-  lines.push(`我自己说了 ${myMsgs.length} 条。`);
+  lines.push('今天最长的几句：');
+  for (const r of meaty) {
+    lines.push(`${fmt(r.time)} ${r.senderName || r.senderId}：${(r.text || '').replace(/\s+/g, ' ').slice(0, 90)}`);
+  }
+  return lines.join('\n');
 }
 
-const rec = {
-  at: new Date(`${target}T23:59:00`).toISOString(),
-  title,
-  body: lines.join('\n'),
-  tags: ['自动', '日记'],
-  auto: true,
-};
+// ── 用模型写人话版日记 ────────────────────────────────
+async function llmDiary() {
+  const cfgPath = path.join(ROOT, 'private', 'group-bot.config.json');
+  if (!fs.existsSync(cfgPath)) throw new Error('没有 group-bot.config.json');
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  if (!cfg.apiKey || !cfg.baseUrl) throw new Error('模型配置缺 apiKey/baseUrl');
 
+  const prompt = `下面是我今天在群里经历的事。用**第一人称**写一篇日记。
+
+写作要求（重要）：
+- 我是「朝闻」，在群里自称逆天赛博老哥，脾气冲、嘴毒、会阴阳人，但心里有数。用我的语气写，别写成汇报。
+- 300~500 字。是第一人称叙事，不是统计清单：不要罗列条数占比，不要分点，不要"今天群里发生了以下几件事"。
+- 必须落到具体的人和具体的原话（下面素材里有），挑两三件真正有戏的写透，其余一笔带过。
+- 要有情绪和判断：谁让我不痛快、我哪句回得漂亮、哪件事其实我没做好。可以自嘲。
+- 结尾一句收住，别升华、别喊口号、别写"期待明天"。
+- 不要暴露你在"分析数据"；当作我自己回忆这一天。
+- 数字只准原样引用素材给的（如掉线次数），素材没给的别编——**尤其不许编轮询次数、耗时、条数**，写"跑了好几轮""折腾了一阵"就够。
+- 绝对不要写"我给了某某密钥/API key/Token"之类的话：真实情况是这类东西从不外发。
+
+第一行只写标题（不超过 14 个字，不要引号），空一行，然后写正文。
+
+素材：
+${material}`;
+
+  const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: '你是一个会写日记的人，文字干净、有具体细节、不装。' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.85,
+      max_tokens: 900,
+      ...(cfg.enableThinking === false ? {} : {}),
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) throw new Error(`模型返回 ${res.status}`);
+  const j = await res.json();
+  const text = String(j?.choices?.[0]?.message?.content ?? '').trim();
+  if (text.length < 60) throw new Error('模型返回太短');
+  const [head, ...rest] = text.split('\n');
+  const body = rest.join('\n').trim();
+  // 模型有时自己把日期也写进标题，会变成「2026-11-12 11·12 xxx」，剥掉重复的日期
+  let t = head.replace(/^[#\s"「『]+|[」』"]+$/g, '').trim();
+  t = t.replace(/^\d{4}[-/年]?\d{1,2}[-/月]?\d{1,2}日?\s*/, '').replace(/^\d{1,2}[·.\-/]\d{1,2}\s*/, '').trim();
+  return { title: `${target} ${t || '日常'}`.trim(), body: body || text };
+}
+
+// ── 数字护栏 ──────────────────────────────────────────
+// 小模型爱编数字（实测把「88 次轮询」写成「8 次」、把掉线次数改成 3）。
+// 日记可以有情绪，但数字得是真的：正文里出现素材没有的数字，就让它改一遍。
+function numbersIn(text) {
+  return new Set((String(text).match(/\d{1,4}/g) || []));
+}
+function badNumbers(body, allowed) {
+  // 只放过"时间写法"里的数字（19:20 这种），其余一律要求能在素材里找到出处。
+  // 之前放宽到 <=24 就算了，结果模型把「8 次」这种编的数字全塞在容忍区间里蒙过去。
+  const timeDigits = new Set();
+  for (const m of String(body).matchAll(/(\d{1,2}):(\d{2})/g)) {
+    timeDigits.add(m[1]);
+    timeDigits.add(m[2]);
+  }
+  const bad = [];
+  for (const n of numbersIn(body)) {
+    if (allowed.has(n) || timeDigits.has(n)) continue;
+    if (/^(19|20)\d{2}$/.test(n)) continue;   // 年份
+    bad.push(n);
+  }
+  return bad;
+}
+
+async function repairNumbers(body, bad) {
+  const cfgPath = path.join(ROOT, 'private', 'group-bot.config.json');
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: '你负责校正数字，不改文风。' },
+        { role: 'user', content: `下面这篇日记里出现了没有依据的数字（${bad.join('、')}）。请改写：把这些数字删掉或换成不含数字的说法（如「跑了好几轮」「折腾了一阵」），其余内容、语气、分段一律保持原样，只输出改写后的正文。\n\n${body}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 900,
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) return body;
+  const j = await res.json();
+  const t = String(j?.choices?.[0]?.message?.content ?? '').trim();
+  return t.length > 60 ? t : body;
+}
+
+let rec;
+try {
+  const d = await llmDiary();
+  let body = d.body;
+  const allowed = numbersIn(material);
+  const bad = badNumbers(body, allowed);
+  if (bad.length) {
+    console.log(`正文里有素材外的数字（${bad.join('、')}），让模型改一遍`);
+    body = await repairNumbers(body, bad);
+    const still = badNumbers(body, allowed);
+    if (still.length) console.log(`还有：${still.join('、')}（保留，但记下来了）`);
+  }
+  // 最后一道：轮询/耗时这类技术数字一律抹成模糊说法。
+  // 这些东西日记里本来就没必要精确，模型却总爱编一个，与其教它不如直接擦掉。
+  body = body
+    .replace(/共轮询\s*\d+\s*[次轮]?/g, '跑了好几轮')
+    .replace(/轮询\s*\d+\s*次/g, '跑了好几轮')
+    .replace(/耗时\s*\d+\s*(秒|分钟)/g, '折腾了一阵')
+    .replace(/\d+\.\d+\s*秒/g, '十几秒');
+  rec = { at: new Date(`${target}T23:59:00`).toISOString(), title: d.title, body, tags: ['自动', '日记'], auto: true, by: 'llm' };
+  console.log('模型版日记 ok');
+} catch (e) {
+  console.log(`模型版失败（${e.message}），退回统计版`);
+  rec = { at: new Date(`${target}T23:59:00`).toISOString(), title: `${target} 日常`, body: statsBody(), tags: ['自动', '日记'], auto: true, by: 'stats' };
+}
+
+// 同一天重写时覆盖旧记录，别让同一个日期出现两篇
+const kept = existing.filter((e) => !(e.title || '').startsWith(target));
+fs.writeFileSync(DIARY, kept.map((e) => JSON.stringify(e)).join('\n') + (kept.length ? '\n' : ''), 'utf8');
 fs.appendFileSync(DIARY, JSON.stringify(rec) + '\n', 'utf8');
-console.log(`已写：${title}（${sameDay.length} 条消息）`);
+console.log(`已写：${rec.title}（${sameDay.length} 条消息，${rec.by}）`);
