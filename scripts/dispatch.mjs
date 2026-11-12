@@ -78,6 +78,16 @@ async function lastAgentText(sessionId, limit = 40) {
 }
 
 /** 后台等它干完再回报——不占我的回合 */
+/** 我这条聊天会话的 id：从 qq-watch 配置里读，别写死。 */
+function defaultSessionId() {
+  try {
+    const cfg = JSON.parse(readFileSync(path.join(ROOT, 'private', 'qq-watch.config.json'), 'utf8'));
+    return cfg.sessionId || '';
+  } catch {
+    return '';
+  }
+}
+
 function spawnNotifier(sessionId, target, title) {
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'watch', sessionId, '--notify', target, '--title', title || ''], {
     detached: true,
@@ -139,7 +149,7 @@ async function dispatchToLane(laneName, task, { notify = '', titleOverride = '' 
     if (!r.ok) die(`派活失败: ${JSON.stringify(r).slice(0, 160)}`);
   }
 
-  if (!notify) return { sid, created };
+  // 不管有没有 --notify，都起守望：干完必须回推到聊天会话，这是默认行为。
   const pid = spawnNotifier(sid, notify, titleOverride || lane.title);
   return { sid, created, notifyPid: pid };
 }
@@ -307,6 +317,19 @@ async function main() {
       const mins = Math.round((Date.now() - startedAt) / 60000);
       console.log(`\n=== 干完了（${mins} 分钟）===\n${text}`);
 
+      // 关键一环：结论要推回**我这条聊天会话**，不然派出去的活干完了我不知道。
+      // 之前只有 --notify 发 QQ（那是给号主看的），聊天这边完全瞎。
+      // 默认推回：优先 --session，否则读 qq-watch.config.json 里的 sessionId。
+      const backSession = flag('session') || defaultSessionId();
+      if (backSession) {
+        const head = `[dispatch] ${title || '派下去的活'} 干完了（${mins} 分钟，会话 ${sid}）`;
+        const body = `${head}\n${text.slice(0, 1200)}`;
+        const r = await call('send', { sessionId: backSession, text: body })
+          .catch((e) => ({ ok: false, error: e.message }));
+        const line = `[${new Date().toLocaleString('zh-CN')}] 回推会话 ${backSession} ok=${r?.ok} ${r?.error || ''}`;
+        try { appendFileSync(path.join(ROOT, 'output', 'dispatch.log'), line + '\n'); } catch { /* 日志失败不影响推送 */ }
+        console.log(line);
+      }
       if (notify) {
         const body = `【${title || '派下去的活'}】干完了（${mins} 分钟）：\n${text.slice(0, 600)}`;
         // 同步发、把结果记日志。私聊这条链坏过一次（禁言那次"发了但没人收到"），
