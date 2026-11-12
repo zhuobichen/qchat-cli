@@ -17,7 +17,9 @@ import { feedbackMultiplier, recordStickerSent, statsBySticker } from './sticker
 import { searchMemes } from './memesource.js';
 
 export const JEV_ENDPOINT = 'https://api.302ai.cn/typesafeai/v1/systemone';
-export const JEV_MODEL = 'jev-latest';
+// 2026-11-12 按号主给的 302.AI 中转固定版本号：
+// jev-latest 会随中转方更新而漂移，钉死版本号才能复现判断结果。
+export const JEV_MODEL = process.env.JEV_MODEL || 'typesafe/jev-1.14-20261014';
 
 export interface StickerCandidate {
   id: string;

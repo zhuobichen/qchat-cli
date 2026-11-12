@@ -22,6 +22,12 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// 常驻进程也要读 .env：JEV_API_KEY 这类密钥只放在 .env 里，
+// 不在启动脚本里 export。Node 20.12+ 自带 loadEnvFile，少一个依赖。
+try {
+  if (typeof process.loadEnvFile === 'function') process.loadEnvFile(join(ROOT, '.env'));
+} catch { /* 没有 .env 就走系统环境变量 */ }
 const CONFIG_PATH = join(ROOT, 'private', 'auto-reply.config.json');
 const STATE_DIR = process.env.QCE_AUTO_STATE_DIR ?? join(ROOT, 'private', '.auto');
 const STATE_PATH = join(STATE_DIR, 'state.json');
