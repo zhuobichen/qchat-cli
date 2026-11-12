@@ -15,6 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = process.cwd();
 const DIARY = path.join(ROOT, 'private', 'diary.jsonl');
@@ -46,6 +47,23 @@ if (!target && now.getHours() < 3) {
 if (!target) target = ymd(now);
 
 // ── 读当天消息 ─────────────────────────────────────────
+// 写之前先把索引刷一遍。
+// 踩过的坑：2026-11-11 那篇没写，除了调度器被杀，还因为索引只到 11-10，
+// 脚本老老实实按索引算，得出"没有消息，不写"——它没说谎，是我喂的数据是旧的。
+// 索引刷新失败不阻塞：宁可写一篇旧的，也别一个字都不留。
+try {
+  const cli = path.join(ROOT, 'dist', 'cli.js');
+  if (fs.existsSync(cli) && !flag('no-refresh')) {
+    const r = spawnSync(process.execPath, [cli, 'index', GROUP, '--limit', '800'], {
+      encoding: 'utf8', cwd: ROOT, timeout: 180_000,
+    });
+    const line = (r.stdout || '').trim().split('\n').pop() || (r.stderr || '').trim().slice(0, 120);
+    console.log('索引刷新:', line);
+  }
+} catch (e) {
+  console.log('索引刷新失败（继续用旧索引）:', e.message);
+}
+
 const idxFile = fs.existsSync(INDEX_DIR)
   ? fs.readdirSync(INDEX_DIR).find((f) => f.includes(GROUP))
   : null;
