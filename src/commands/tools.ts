@@ -214,6 +214,43 @@ export function toolsCommand(program: Command): void {
       }
     });
 
+  // ── draw：生图（MiniMax） ─────────────────────────────
+  //
+  // 为什么默认走 MiniMax：豆包那条路要开桌面版 GUI、一张 15~35 秒、还不能并发。
+  // MiniMax 是纯 HTTP（国内站 api.minimaxi.com），能指定比例、能一次出多张、
+  // 直接回 base64 自己落盘。号主 2026-11-12 给的 key 只认国内站——
+  // 国际站 api.minimax.io 会回 2049 invalid api key，这个坑记在 rules.md。
+  program
+    .command('draw <prompt>')
+    .description('用 MiniMax image-01 生图。默认 16:9，输出绝对路径')
+    .option('--ar <ratio>', '宽高比，如 16:9 / 1:1 / 9:16', '16:9')
+    .option('--n <count>', '张数（1-4）', '1')
+    .option('--name <stem>', '文件名主干')
+    .option('--url', '只回图片 URL，不落盘')
+    .action((prompt: string, options: { ar?: string; n?: string; name?: string; url?: boolean }) => {
+      try {
+        const args = [join(ROOT, 'scripts', 'minimax-image.mjs'), prompt];
+        if (options.ar) args.push('--ar', options.ar);
+        if (options.n) args.push('--n', options.n);
+        if (options.name) args.push('--name', options.name);
+        if (options.url) args.push('--url');
+        const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 240000 });
+        const out = ((r.stdout || '') + (r.stderr || '')).trim();
+        if (r.status !== 0) {
+          report(false, 'draw', out.slice(-300));
+          return;
+        }
+        // 只把 IMAGE_PATH/IMAGE_URL 那几行亮出来，其余信息压成一句
+        const lines = out.split('\n');
+        const paths = lines.filter((l) => l.startsWith('IMAGE_PATH=') || l.startsWith('IMAGE_URL='));
+        const meta = lines.filter((l) => l.startsWith('BASE=')).join(' ');
+        for (const p of paths) console.log(p);
+        report(paths.length > 0, `draw ${paths.length} 张`, meta);
+      } catch (e: any) {
+        report(false, 'draw', e?.message || String(e));
+      }
+    });
+
   // ── see：看图 ─────────────────────────────────────────
   program
     .command('see <image>')

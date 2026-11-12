@@ -1,0 +1,9 @@
+{
+  "_comment": "复制成 private/minimax.config.json 再填 key（真文件不进 git）",
+  "apiKey": "sk-api-你的key",
+  "baseUrl": "https://api.minimaxi.com/v1",
+  "baseUrlFallback": "https://api.minimax.chat/v1",
+  "model": "image-01",
+  "defaultAspect": "16:9",
+  "outDir": "output/gen"
+}

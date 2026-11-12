@@ -449,3 +449,26 @@ node scripts/dispatch.mjs reset-lane software         # 聊满了/跑偏了就�
 （seed 里带角色 + 目录 + 第一件活）。所以**别在车道上手动 `start`**，那会另开一个、把登记表搞乱。
 
 **唯一要盯的事**：车道会话会越聊越满，满了就 `reset-lane`。它不是无限上下文。
+
+---
+
+## 12. 生图：MiniMax image-01 是默认通道（2026-11-12 接入）
+
+```bash
+qce draw "提示词" [--ar 16:9] [--n 1] [--name 主干] [--url]
+node scripts/minimax-image.mjs "提示词" --ar 9:16      # 同一套，脚本直调
+```
+
+配置在 `private/minimax.config.json`（**含 key，已 gitignore**；模板见 `.example.json`）。
+
+**两个必须记住的坑**：
+
+1. **key 只认国内站**。`https://api.minimaxi.com/v1`（备用 `api.minimax.chat/v1`）能过；
+   国际站 `api.minimax.io` 一律回 `2049 invalid api key`——同一把 key，
+   换域名结果相反，所以别一看 2049 就说 key 废了，先换站。
+2. **它回的 base64 是 JPEG，不是 PNG**。按模型名/文档存成 `.png` 会导致
+   下游按扩展名判类型的工具直接拒读（`read_image` 就报过「扩展名声明与字节不符」）。
+   现在按 magic number 定扩展名。
+
+「H3」是 MiniMax 的**视频**模型家族（MiniMax-Hailuo/MiniMax-H3），生图模型 ID 是 `image-01`，
+别把两个搞混。

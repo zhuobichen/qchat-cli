@@ -193,6 +193,20 @@ node dist/cli.js dispatch lanes                    # 同一个东西的工具层
 **最关键的坑**：建会话必须用 `createSession { workspaceId }`，不能用 `start { cwd }`——
 前者会 `attachSession` 进工作区（侧栏看得见），后者不会。详见 `private/rules.md` 第 11 节。
 
+## 16. 生图（MiniMax image-01）
+
+```bash
+qce draw "提示词" --ar 16:9 --name 主干     # 默认通道，纯 HTTP
+node scripts/minimax-image.mjs "提示词"      # 脚本直调，成功打印 IMAGE_PATH=
+node dist/cli.js pic group:<群号> <路径>     # 发出去
+```
+
+配置 `private/minimax.config.json`（含 key，gitignore）。
+**坑**：只认国内站 `api.minimaxi.com`（国际站 api.minimax.io 回 2049）；
+返回的 base64 其实是 JPEG，存盘按 magic number 定扩展名，别一律 .png。
+
+豆包桌面版那条路（`generate_image` 工具）还在，但要开 GUI、单张 15~35 秒，慢的时候用它兜底。
+
 ## 判断该不该用哪个
 
 | 想干的事 | 用哪个 |
