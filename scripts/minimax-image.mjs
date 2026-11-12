@@ -125,3 +125,22 @@ if (!saved.length) {
 }
 for (const f of saved) console.log(`IMAGE_PATH=${f}`);
 console.log(`BASE=${usedBase} MODEL=${model} AR=${aspect}`);
+
+// 每次生图都留档：提示词是资产，改图时最值钱的就是它。
+// 记在 output/gen/prompts.jsonl，一行一条，别覆盖。
+try {
+  const logFile = path.join(outDir, 'prompts.jsonl');
+  const record = {
+    at: new Date().toISOString(),
+    model,
+    aspect,
+    n,
+    prompt,
+    note: flag('note'),
+    outputs: saved.map((f) => path.basename(f)),
+  };
+  fs.appendFileSync(logFile, JSON.stringify(record) + "\n", 'utf8');
+  console.log(`PROMPT_LOG=${logFile}`);
+} catch (e) {
+  console.error(`(提示词留档失败，不影响出图: ${e.message})`);
+}
