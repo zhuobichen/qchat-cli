@@ -82,6 +82,17 @@ function logAge(file) {
   }
 }
 
+// 人主动停掉的时候别当故障：看到暂停标记就直接说「已暂停」并退出，
+// 不然每次体检都报 down、还会触发重启——可那个人就是不想让它跑。
+const PAUSED_MARK = path.join(process.cwd(), 'private', '.automation-paused');
+if (fs.existsSync(PAUSED_MARK)) {
+  let why = '';
+  try { why = JSON.parse(fs.readFileSync(PAUSED_MARK, 'utf8')).reason || ''; } catch { /* 标记坏了也照样停 */ }
+  console.log('⏸  已暂停（' + (why || '手动停止') + '）');
+  console.log('   要恢复：qce automation start');
+  process.exit(0);
+}
+
 async function main() {
   const r = { at: new Date().toISOString(), checks: {}, verdict: '', advice: '' };
 
