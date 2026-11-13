@@ -2,7 +2,7 @@
  * 人格（persona）：决定「怎么说」，不决定「能做什么」。
  *
  * 两种模式：
- *   global   —— 全局人格：所有群和私聊都用同一份（`private/personas/global.md`）
+ *   global   —— 全局人格：所有群和私聊都用同一份（`private/personas/friendly-ai.md`）
  *   per-scope—— 按群/按人：`private/personas/<群号|QQ号>.md`，互不串味
  *
  * 为什么要有全局模式：一上来就给每个群写一份人格不现实，
@@ -26,11 +26,14 @@ export interface PersonaOptions {
 export const DEFAULT_PERSONA_DIR = 'private/personas';
 /** 全局人格文件名（不带扩展名，避免和纯数字的群号/QQ号混淆） */
 // 全局人格文件名。
-// 2026-11-13 从 'global' 改成 'friendly-ai'：旧 global.md 是无差别攻击人格，
+// 2026-11-13 从 'global' 改成 'friendly-ai'：老的无差别攻击人格（魔丸）
 // 因为对所有人用同一张攻击脸被群主移出，号主要求换成「AI 是人类的好朋友」。
-// 文件不存在时仍会自动回落到 global.md（见 readPersona 的兜底）。
+//
+// 同一天号主又说「global.md 改个名字，魔丸人格」，于是老文件定名 mowan.md，
+// global.md 只留一个路标（会话配置里写着每轮必读它，删了会读不到）。
+// 回退顺序：friendly-ai → mowan → global，全没有才算「没有人格」。
 export const GLOBAL_PERSONA_NAME = 'friendly-ai';
-export const LEGACY_PERSONA_NAME = 'global';
+export const LEGACY_PERSONA_NAMES = ['mowan', 'global'] as const;
 
 function dirOf(options: PersonaOptions): string {
   return options.dir ?? DEFAULT_PERSONA_DIR;
@@ -70,9 +73,13 @@ export function savePersonaMode(mode: PersonaMode, options: PersonaOptions = {})
 /** 读全局人格；没有返回 null */
 export function loadGlobalPersona(options: PersonaOptions = {}): string | null {
   const primary = readPersonaFile(join(dirOf(options), `${GLOBAL_PERSONA_NAME}.md`), options.maxChars ?? 6000);
-  // 新文件还没写/读不出来时回退旧文件，宁可拿到一份过时的人格，也别等于"没有人格"
   if (primary) return primary;
-  return readPersonaFile(join(dirOf(options), `${LEGACY_PERSONA_NAME}.md`), options.maxChars ?? 6000);
+  // 新文件读不到才回退；宁可拿到一份过时的人格，也别等于「没有人格」
+  for (const legacy of LEGACY_PERSONA_NAMES) {
+    const text = readPersonaFile(join(dirOf(options), `${legacy}.md`), options.maxChars ?? 6000);
+    if (text) return text;
+  }
+  return null;
 }
 
 /** 读某个群的人格；没有返回 null */

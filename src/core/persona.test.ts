@@ -78,11 +78,23 @@ describe('resolvePersona 模式分流', () => {
 });
 
 describe('文件读写', () => {
-  it('全局人格文件名是 global.md 而不是纯数字', () => {
-    expect(GLOBAL_PERSONA_NAME).toBe('global');
+  it('全局人格文件名是 friendly-ai.md（2026-11-13 起的新默认）', () => {
+    expect(GLOBAL_PERSONA_NAME).toBe('friendly-ai');
     const f = saveGlobalPersona('x', { dir });
-    expect(f.endsWith('global.md')).toBe(true);
+    expect(f.endsWith('friendly-ai.md')).toBe(true);
     expect(existsSync(f)).toBe(true);
+  });
+
+  it('新默认文件不存在时回退到旧人格（mowan → global）', () => {
+    // 先确保新文件不在
+    const fresh = mkdtempSync(join(tmpdir(), 'persona-legacy-'));
+    writeFileSync(join(fresh, 'mowan.md'), '魔丸人格', 'utf8');
+    expect(loadGlobalPersona({ dir: fresh })).toBe('魔丸人格');
+
+    // mowan 也没有时退到更老的 global.md
+    const older = mkdtempSync(join(tmpdir(), 'persona-legacy2-'));
+    writeFileSync(join(older, 'global.md'), '贴吧老哥', 'utf8');
+    expect(loadGlobalPersona({ dir: older })).toBe('贴吧老哥');
   });
 
   it('空文件当作没有', () => {
