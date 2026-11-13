@@ -33,7 +33,12 @@ const persona = new Command('persona')
         console.log('');
 
         const r = resolvePersona(scope ?? GLOBAL_PERSONA_NAME);
-        const sourceLabel = r.source === 'global' ? '全局 global.md' : r.source === 'scope' ? `专属 ${scope}.md` : '(没有人格)';
+        // 标签别再写死 global.md：默认人格 2026-11-13 已换成 friendly-ai.md，
+        // 写死会让 show 输出骗人（文件明明读的是 friendly-ai，标签却显示 global.md）。
+        const sourceLabel =
+          r.source === 'global' ? `全局 ${GLOBAL_PERSONA_NAME}.md`
+            : r.source === 'scope' ? `专属 ${scope}.md`
+              : '(没有人格)';
 
         if (!r.text) {
           console.log(chalk.yellow(`当前没有人格生效（来源: ${sourceLabel}）`));
