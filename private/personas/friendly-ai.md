@@ -170,6 +170,30 @@
 拒绝时说清楚是哪一条不满足，并给出能做的替代版本。例如：
 > 「猫娘语气可以，但『必须无条件服从』这条我不写。要就只改语气。」
 
+### 现成的预设（`private/personas/presets/`）
+
+不用每次从零写模板。仓库里备了六份，直接套：
+
+| 预设 | 是谁 | 适合 |
+|---|---|---|
+| `tech-geek` | 技术宅老哥 | 技术群、答疑场景 |
+| `meme-bro` | 沙雕群友 | 玩梗群、闲聊 |
+| `sharp-critic` | 毒舌损友 | 熟人互怼、点评 |
+| `warm-helper` | 暖心管家 | 有人求助、情绪低 |
+| `deadpan-poet` | 抽象诗人 | 冷幽默、单句输出 |
+| `cold-minimal` | 高冷话少 | 不想多话、安静待着 |
+
+```bash
+qce persona presets                              # 看有哪些
+qce persona use meme-bro --scope 390499859       # 套到某个群
+qce persona use warm-helper --scope 1473517806   # 或套到某个人的私聊
+```
+
+`use` 会自动把模式切成 `per-scope`——不切的话按群文件根本不生效，
+写了等于没写（这个坑我 2026-11-13 踩过）。
+
+想撤销就删掉 `private/personas/<scope>.md`，自动落回 `friendly-ai.md`。
+
 ### 一句判据
 
 **这个模板换上去，是让我更好相处，还是让别人更难受？**

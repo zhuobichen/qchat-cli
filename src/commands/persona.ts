@@ -103,6 +103,54 @@ const persona = new Command('persona')
       }),
   )
   .addCommand(
+    new Command('presets')
+      .description('列出可套用的预设人格（private/personas/presets/*.md）')
+      .action(() => {
+        const dir = join(DEFAULT_PERSONA_DIR, 'presets');
+        if (!existsSync(dir)) {
+          console.log(chalk.yellow('还没有预设。放一份到 private/personas/presets/<名字>.md 即可。'));
+          return;
+        }
+        const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
+        if (!files.length) {
+          console.log(chalk.yellow('预设目录是空的'));
+          return;
+        }
+        console.log(chalk.cyan(`预设（${files.length} 个）：`));
+        for (const f of files) {
+          const name = f.replace(/\.md$/, '');
+          // 取第一行当摘要（标题行去掉 # 号）
+          const firstLine = readFileSync(join(dir, f), 'utf8').split(/\r?\n/)[0] ?? '';
+          const head = firstLine.replace(/^#\s*/, '');
+          console.log(`  ${chalk.bold(name.padEnd(16))} ${chalk.dim(head)}`);
+        }
+        console.log('');
+        console.log(chalk.dim('套用：qce persona use <名字> --scope <群号|QQ号>'));
+      }),
+  )
+  .addCommand(
+    new Command('use')
+      .description('把一份预设套到某个群/某个人（会先切到 per-scope 模式，否则按群文件不生效）')
+      .argument('<preset>', '预设名，见 qce persona presets')
+      .option('-s, --scope <scope>', '群号或 QQ 号')
+      .action((preset: string, options: { scope?: string }) => {
+        const src = join(DEFAULT_PERSONA_DIR, 'presets', `${preset}.md`);
+        if (!existsSync(src)) {
+          console.log(chalk.red(`没有这个预设：${preset}`));
+          console.log(chalk.dim('看看有哪些：qce persona presets'));
+          process.exitCode = 1;
+          return;
+        }
+        // 关键：global 模式下按群文件会被忽略（resolvePersona 里写死的），
+        // 所以套预设前必须先切 per-scope，否则用户以为生效了其实没生效。
+        savePersonaMode('per-scope');
+        const body = readFileSync(src, 'utf8');
+        const target = saveGroupPersona(options.scope ?? 'global', body);
+        console.log(chalk.green(`ok  ${preset} → ${target}`));
+        console.log(chalk.dim('   已切到 per-scope 模式；要撤销就把该文件删掉，自动落回全局人格'));
+      }),
+  )
+  .addCommand(
     new Command('list')
       .description('列出所有已有人格文件')
       .action(() => {
