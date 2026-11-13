@@ -25,7 +25,12 @@ export interface PersonaOptions {
 
 export const DEFAULT_PERSONA_DIR = 'private/personas';
 /** 全局人格文件名（不带扩展名，避免和纯数字的群号/QQ号混淆） */
-export const GLOBAL_PERSONA_NAME = 'global';
+// 全局人格文件名。
+// 2026-11-13 从 'global' 改成 'friendly-ai'：旧 global.md 是无差别攻击人格，
+// 因为对所有人用同一张攻击脸被群主移出，号主要求换成「AI 是人类的好朋友」。
+// 文件不存在时仍会自动回落到 global.md（见 readPersona 的兜底）。
+export const GLOBAL_PERSONA_NAME = 'friendly-ai';
+export const LEGACY_PERSONA_NAME = 'global';
 
 function dirOf(options: PersonaOptions): string {
   return options.dir ?? DEFAULT_PERSONA_DIR;
@@ -64,7 +69,10 @@ export function savePersonaMode(mode: PersonaMode, options: PersonaOptions = {})
 
 /** 读全局人格；没有返回 null */
 export function loadGlobalPersona(options: PersonaOptions = {}): string | null {
-  return readPersonaFile(join(dirOf(options), `${GLOBAL_PERSONA_NAME}.md`), options.maxChars ?? 6000);
+  const primary = readPersonaFile(join(dirOf(options), `${GLOBAL_PERSONA_NAME}.md`), options.maxChars ?? 6000);
+  // 新文件还没写/读不出来时回退旧文件，宁可拿到一份过时的人格，也别等于"没有人格"
+  if (primary) return primary;
+  return readPersonaFile(join(dirOf(options), `${LEGACY_PERSONA_NAME}.md`), options.maxChars ?? 6000);
 }
 
 /** 读某个群的人格；没有返回 null */
