@@ -266,3 +266,19 @@ node scripts/persona-router.mjs --scope <群号> --show        # 看当前状态
 node scripts/persona-router.mjs --scope <群号> --clear       # 回到基线
 tail -f output/persona-router.log                            # 看切换记录
 ```
+
+### 规则 + Jev 两层（2026-11-13 升级）
+
+规则先判（便宜、可解释、失败可回落），Jev 在同一份 state 上复核一次：
+
+- 单位是「一个 state → 一批判断」，不是每条消息一次。
+  实测 439 输入 token ≈ **$0.000018**，问 2 个问题（场景 choice + 紧张度 score）几乎不加钱。
+- Jev 只做判断不做生成；答案走四道硬校验（键集、范围、和为 1、choice 是 argmax），
+  不过就抛错回落规则——契约漂移的失效方式是「选错了但看起来正常」，必须卡死。
+- 置信度 <0.5 不采纳，`baseline` 也不采纳。**Jev 只许改口吻，不许改事实。**
+- 每次响应记录实际服务版本（`model` 字段是 `typesafe/jev-1.14-…` 这种真名），
+  因为 `jev-latest` 这类别名会漂而结果看起来都正常。
+- 一条命令回滚：`--jev off` 或环境变量 `QCE_ROUTER_JEV=off`，立刻回到纯规则。
+
+实测收益：`你可真行啊，说了半天全是废话`——规则判不出来（没有命中词），
+Jev 判 roast 0.93，切成 sharp-critic。**这正是规则抓不到的那类阴阳。**

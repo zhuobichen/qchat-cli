@@ -132,6 +132,58 @@ export function pickScene(messages) {
   };
 }
 
+// ── Jev 智能判层 ────────────────────────────────────
+// 规则先判（便宜的初判 + 失败回落），Jev 在**同一个 state 上**做一次判断复核。
+// 为什么一次就够：Jev 的边际成本≈0，state 才是开销大头——所以单位是
+// 「一个 state → 一批判断」，不是每条消息一次（实测 439 输入 token ≈ $0.000018）。
+// 号主要求用它；但失败/低置信度一律回落规则，不硬判。
+const SCENE_CRITERIA = {
+  tech: '在排技术问题：报错、配置、代码、部署、性能',
+  help: '有人求助或情绪不佳：难受、崩溃、白干、要人帮',
+  roast: '互相开涮、对骂、嘲讽，火药味明显',
+  banter: '闲聊玩梗、开玩笑、整活，气氛轻松',
+  quiet: '只说了几个字，寒暄或应答',
+  baseline: '普通聊天，以上都算不上',
+};
+
+async function refineWithJev(scope, messages, ruleResult, opts = {}) {
+  const { createClient } = await import('./jev-client.mjs');
+  const client = createClient();
+  if (!client.available) return null;
+
+  const texts = messages.map((m) => (typeof m === 'string' ? m : m?.text ?? '')).filter(Boolean);
+  const state = [
+    `群号：${scope}`,
+    `规则初判：${ruleResult.scene ?? 'none'}（依据：${ruleResult.why ?? '无'}）`,
+    '最近消息：',
+    texts.slice(-12).map((t, i) => `[#${i}] ${t.slice(0, 120)}`).join(String.fromCharCode(10)),
+  ].join(String.fromCharCode(10));
+
+  const r = await client.decide(state, {
+    scene: {
+      type: 'choice',
+      instructions: '判断这一段群聊的性质，用来决定回复用什么口吻。只判断性质，不要评价内容好坏。',
+      criteria: SCENE_CRITERIA,
+    },
+    heat: {
+      type: 'score',
+      instructions: '群内当前紧张程度（有无冲突、挑衅、情绪升温）',
+      criteria: ['平静', '略有不快', '明显对线', '火药味很重'],
+    },
+  });
+
+  const minConf = opts.minConfidence ?? 0.5;
+  const scene = r.answers.scene;
+  return {
+    scene: scene.choice,
+    confidence: scene.confidence,
+    heat: r.answers.heat?.score ?? 0,
+    model: r.model,
+    costUsd: r.usage.costUsd,
+    accepted: scene.choice !== 'baseline' && scene.confidence >= minConf,
+  };
+}
+
 function statePath(scope) {
   return path.join(STATE_DIR, `${scope}.json`);
 }
@@ -248,6 +300,46 @@ if (process.argv[1] && process.argv[1].endsWith('persona-router.mjs')) {
       messages = t ? t.split('\n') : [];
     }
     const r = route(scope, messages, { ttlMin: Number(arg('--ttl', DEFAULT_TTL_MIN)) });
+
+    // Jev 复核（默认 auto：有 key 就用，没 key / 出错 / 低置信度一律回落规则）
+    const jevMode = arg('--jev', process.env.QCE_ROUTER_JEV ?? 'auto');
+    if (jevMode !== 'off' && !r.manual) {
+      try {
+        const refined = await refineWithJev(scope, messages, r, {
+          minConfidence: Number(arg('--min-conf', 0.5)),
+        });
+        if (refined) {
+          r.jev = {
+            scene: refined.scene, confidence: Number(refined.confidence.toFixed(2)),
+            heat: refined.heat, model: refined.model,
+            costUsd: Number(refined.costUsd.toFixed(6)), accepted: refined.accepted,
+          };
+          const presetFor = Object.fromEntries(SCENES.map((x) => [x.id, x]));
+          const target = presetFor[refined.scene];
+          if (refined.accepted && target && target.preset !== r.preset) {
+            // Jev 认为该换：它比规则看得全（能理解「这句话其实是在阴阳」这种规则抓不到的）
+            const now = Date.now();
+            writeState(scope, {
+              scene: refined.scene, preset: target.preset, score: 3,
+              since: now, until: now + Number(arg('--ttl', DEFAULT_TTL_MIN)) * 60_000, at: now,
+              why: `Jev ${refined.confidence.toFixed(2)} 判为 ${refined.scene}`,
+              hint: `（这一段像「${target.label}」，用 ${target.preset} 的口吻；预设见 private/personas/presets/${target.preset}.md）`,
+              by: 'jev', model: refined.model,
+            });
+            log(`Jev 改判 → ${target.preset}（${refined.scene} ${refined.confidence.toFixed(2)}，规则原判 ${r.scene}，模型 ${refined.model}，$${refined.costUsd.toFixed(6)}）`);
+            r.preset = target.preset;
+            r.scene = refined.scene;
+            r.hint = `（这一段像「${target.label}」，用 ${target.preset} 的口吻；预设见 private/personas/presets/${target.preset}.md）`;
+            r.switched = true;
+            r.by = 'jev';
+          }
+        }
+      } catch (e) {
+        r.jevError = String(e.message).slice(0, 120);
+        log(`Jev 失败回落规则：${e.message}`);
+      }
+    }
+
     console.log(JSON.stringify(r, null, 2));
   }
 }

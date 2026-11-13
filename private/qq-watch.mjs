@@ -640,7 +640,8 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
       const recent = batch.map((m) => m.text).filter(Boolean);
       const r = spawnSync(process.execPath, [
         join(ROOT, 'scripts', 'persona-router.mjs'), '--scope', gid, '--stdin',
-      ], { input: JSON.stringify(recent), encoding: 'utf8', timeout: 10_000 });
+      // 25s：路由里会调一次 Jev（客户端自身 20s 超时），外层 10s 会先把 Jev 掐死
+      ], { input: JSON.stringify(recent), encoding: 'utf8', timeout: 25_000 });
       const out = JSON.parse((r.stdout || '{}').trim() || '{}');
       if (out.hint) lines.push(out.hint);
     } catch { /* 路由挂了就用默认人格，不因此丢消息 */ }
