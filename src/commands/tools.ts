@@ -144,12 +144,24 @@ export function toolsCommand(program: Command): void {
     // 我还以为发了。忽略多余参数，比静默失败强。
     .allowUnknownOption(true)
     .option('--force', '兼容旧用法，忽略')
-    .action(async (targetRaw: string, text: string) => {
+    // --at 群聊里 @ 某人。为什么需要：群里两个人同时觉得我在说自己，
+    // 因为发出的只是一段秃文本。带上 @，谁在被回一目了然。
+    .option('--at <qq>', '群聊时先 @ 这个 QQ（可逗号分隔多个）')
+    .action(async (targetRaw: string, text: string, options: { at?: string } = {}) => {
       try {
         const target = parseTarget(targetRaw);
         if (!String(text || '').trim()) throw new Error('文本是空的');
         const pace = await humanPacing(String(text));
-        await sendSegments(target, [{ type: 'text', data: { text } }]);
+        const segs: any[] = [];
+        if (target.kind === 'group' && options.at) {
+          for (const raw of String(options.at).split(',')) {
+            const qq = Number(raw.trim());
+            if (Number.isFinite(qq) && qq > 0) segs.push({ type: 'at', data: { qq: String(qq) } });
+          }
+          if (segs.length) segs.push({ type: 'text', data: { text: ' ' } });
+        }
+        segs.push({ type: 'text', data: { text } });
+        await sendSegments(target, segs);
         report(true, `say → ${target.kind}:${target.id}`, `${text.slice(0, 24)}…${pace ? `（${pace}）` : ''}`);
       } catch (e: any) {
         report(false, 'say', e?.message || String(e));

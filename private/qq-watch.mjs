@@ -587,6 +587,14 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
       const at = batch.some((m) => m.mentioned);
       const senders = [...new Set(batch.map((m) => m.sender))].join('、');
       lines.push(`【群 ${head.peerName}】${senders}${at ? ' 提及你' : ''}：`);
+      // 回复对象要钉死。2026-11-13 群里的教训：我回一句"你"，两个人都以为在说自己。
+      // 发出去的话不带 @ 就是光秃秃一段文本，读者只能靠语境猜；所以投递时先把
+      // "这话该对谁说"确定下来，回的时候才不会糊。
+      const lastSpeaker = batch[batch.length - 1];
+      lines.push(
+        `（要回谁：最后一句是 ${lastSpeaker.sender}(${lastSpeaker.senderId ?? '?'}) 说的。` +
+        `如果你在回上一个人的话，开头写清是谁，或者用 qce say ... --at；别让一句话里两个"你"。）`,
+      );
     }
 
     if (batch.length === 1) {
