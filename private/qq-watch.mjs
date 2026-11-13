@@ -629,6 +629,22 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
     // 旧的 global.md（贴吧老哥/无差别攻击）2026-11-13 起标为不推荐，
     // 起因是它对所有人用同一张攻击脸，被群主移出群。
     lines.push('回复前先读 private/personas/friendly-ai.md ——那是我说话的样子，不是参考资料。不读就别开口。');
+
+    // 人格路由：按这一段的场景挑一个预设口吻（规则判断，不调模型）。
+    // 只用便宜稳定的信号（问句/技术词/对骂词/情绪词），一次切换管 30 分钟，
+    // 场景没换就不变——人格一抖，群里立刻看出这号被轮着用。
+    // 失败不影响投递：拿不到提示就按基线人格说。
+    try {
+      // 群号在 m.peer 里（payload 构造处用的是 peer），不是 groupId——写错过会全群共用一份状态
+      const gid = String(head.kind === 'private' ? head.senderId ?? 'pm' : head.peer ?? 'default');
+      const recent = batch.map((m) => m.text).filter(Boolean);
+      const r = spawnSync(process.execPath, [
+        join(ROOT, 'scripts', 'persona-router.mjs'), '--scope', gid, '--stdin',
+      ], { input: JSON.stringify(recent), encoding: 'utf8', timeout: 10_000 });
+      const out = JSON.parse((r.stdout || '{}').trim() || '{}');
+      if (out.hint) lines.push(out.hint);
+    } catch { /* 路由挂了就用默认人格，不因此丢消息 */ }
+
     // 派活规则也钉在投递里：只写进 rules.md 容易忘，聊天里根本想不起去翻。
     lines.push('（对方要的是"做软件"——写脚本/改代码/做工具/清洗数据——按 private/rules.md 第 11 节派活，别在聊天会话里现做。）');
     // 行数写死过一次，人格一改就变成假情报（写 178 行时实际已经 198 行），所以只给路径。
