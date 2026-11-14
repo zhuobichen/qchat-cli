@@ -130,33 +130,50 @@ export function automationCommand(program: Command): void {
         }, null, 2) + '\n', 'utf8');
         console.log(`ok  停了 ${n} 个进程${options.withQQ ? '（含 QQ / NapCat）' : ''}，已写暂停标记`);
         console.log('    体检脚本看到标记会说「已暂停」，不会再去重启');
+        // 2026-11-14 的翻车：CLI 跑在沙箱里，看不到宿主机进程，于是「停了 0 个进程」
+        // 却照样写了标记 —— 健康检查说已暂停，watchdog 还在拉 NapCat，二维码一直弹。
+        // 所以 0 个进程时必须明说「这次不算停」。
+        if (n === 0) {
+          console.log(chalk.yellow('    ⚠ 一个进程都没杀掉：多半是沙箱看不到宿主机进程，并非真的没有进程在跑。'));
+          console.log(chalk.yellow('      真正停手请在宿主上下文跑：powershell -File ops/stop-all.ps1'));
+        }
         return;
       }
 
       if (act === 'start') {
         if (existsSync(MARK)) rmSync(MARK, { force: true });
-        // 起法沿用现成的启动器：它们处理了短路径、日志重定向这些坑
-        const launchers = [
+
+        // 为什么用 PowerShell Start-Process 而不是 cmd start：
+        // cmd start 在这个项目里踩过两次坑——沙箱里起的进程会被掐，
+        // 而且它把参数交给 cmd 解析，路径里的空格和中文容易散架。
+        // Start-Process -WindowStyle Hidden 是真正脱离的。
+        const targets = [
           '.launch-watch.cmd',
           '.launch-watchdog.cmd',
           '.launch-poke.cmd',
         ];
-        const missing = launchers.filter((l) => !existsSync(join(ROOT, l)));
-        for (const l of launchers) {
+        const missing = targets.filter((l) => !existsSync(join(ROOT, l)));
+        const psLines: string[] = [];
+        for (const l of targets) {
           if (missing.includes(l)) continue;
-          // 用 start 起独立窗口：spawnSync 的 detached 不生效（同步调用会等子进程），
-          // 启动器本身会 detach，所以直接 start 让它自由跑
-          spawnSync('cmd.exe', ['/c', `start "" /b "${join(ROOT, l)}"`], {
-            cwd: ROOT, windowsHide: true, timeout: 15_000,
-          });
+          psLines.push(`Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','${join(ROOT, l).replace(/'/g, "''")}' -WindowStyle Hidden`);
         }
-        // 日记调度没有启动器，直接用 node 起（要求它在后台常驻）
-        spawnSync('cmd.exe', ['/c', `start "" /b "${process.execPath}" scripts\\diary-scheduler.mjs`], {
-          cwd: ROOT, windowsHide: true, timeout: 15_000,
-        });
-        console.log(`ok  已清暂停标记，起了 ${launchers.length - missing.length + 1} 个常驻进程`);
+        // 日记调度没有启动器，直接 node 起
+        psLines.push(`Start-Process -FilePath '${process.execPath.replace(/'/g, "''")}' -ArgumentList 'scripts\diary-scheduler.mjs' -WorkingDirectory '${ROOT.replace(/'/g, "''")}' -WindowStyle Hidden`);
+
+        if (psLines.length) {
+          const r = spawnSync('powershell', ['-NoProfile', '-Command', psLines.join('; ')], {
+            cwd: ROOT, encoding: 'utf8', timeout: 60_000,
+          });
+          if (r.status !== 0) {
+            console.log('起进程失败：' + ((r.stderr || r.stdout || '').trim().slice(0, 200) || `exit ${r.status}`));
+          }
+        }
+
+        console.log(`ok  已清暂停标记，发了 ${psLines.length} 条启动命令`);
         if (missing.length) console.log(`    缺启动器：${missing.join(', ')}`);
-        console.log('    注意：QQ 本体要单独扫码登录（qce napcat start 或 .launch-napcat.cmd）');
+        console.log('    注意：QQ 本体要单独扫码登录（.launch-napcat.cmd）');
+        console.log('    10 秒后跑 qce automation status 确认真的起来了');
         return;
       }
 
