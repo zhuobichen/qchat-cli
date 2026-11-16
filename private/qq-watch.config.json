@@ -13,5 +13,5 @@
   "intervalMinSec": 10,
   "intervalMaxSec": 15,
   "mode": "ws",
-  "reconcileSec": 120
+  "reconcileSec": 300
 }

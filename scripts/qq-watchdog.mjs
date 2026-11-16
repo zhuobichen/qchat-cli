@@ -21,8 +21,9 @@ import { execFileSync, spawnSync, spawn } from 'node:child_process';
 
 const DRY = process.argv.includes('--dry');
 const ONCE = process.argv.includes('--once');
-// 120 → 180 秒：体检本身也是一次 API 调用，掉线时重试节奏过快只会让风控更狠。
-const INTERVAL = Number(process.env.QCE_WD_INTERVAL ?? 180) * 1000;
+// 120 → 180 → 300 秒：体检本身也是一次 API 调用。号主要的是别被风控，
+// 晚 5 分钟发现掉线可以接受（WS 推送在，真掉线时消息本来也收不到）。
+const INTERVAL = Number(process.env.QCE_WD_INTERVAL ?? 300) * 1000;
 const ROOT = process.cwd();
 const CSV = path.join(ROOT, 'output', 'qq-drops.csv');
 const LOG = path.join(ROOT, 'output', 'qq-watchdog.log');
