@@ -148,7 +148,7 @@ if (process.argv[1] && process.argv[1].endsWith('card-guard.mjs')) {
   const group = arg('--group');
   const wantList = arg('--want');
   if (!group) {
-    console.log('用法: node scripts/card-guard.mjs --group <群号> --want <要保住的名字> [--once] [--init] [--interval 15]');
+    console.log('用法: node scripts/card-guard.mjs --group <群号> --want <要保住的名字> [--once] [--init] [--interval 120]');
     process.exit(1);
   }
   const wants = wantList ? wantList.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -161,7 +161,10 @@ if (process.argv[1] && process.argv[1].endsWith('card-guard.mjs')) {
     process.exit(0);
   }
 
-  const intervalSec = Number(arg('--interval') ?? 15);
+  // 默认 120 秒（原 15 秒）：15 秒 = 每天 5760 次 get_group_member_info，
+  // 加上其余常驻进程每天近两万次调用，2026-11-16 账号被踢下线过 33 次，
+  // 这属于自己把自己刷成风控目标。名片被改不是秒级事件，2 分钟足够。
+  const intervalSec = Number(arg('--interval') ?? 120);
   const once = argv.includes('--once');
 
   const tick = async () => {
