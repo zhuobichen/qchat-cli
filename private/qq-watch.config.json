@@ -11,5 +11,7 @@
   "token": "75277e324f924d73255a5d0b77543e035af0e509bc7d7559",
   "deliverAll": true,
   "intervalMinSec": 10,
-  "intervalMaxSec": 15
+  "intervalMaxSec": 15,
+  "mode": "ws",
+  "reconcileSec": 120
 }

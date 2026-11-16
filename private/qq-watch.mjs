@@ -391,8 +391,13 @@ async function listPeers() {
   return peers;
 }
 
-async function poll() {
-  const peers = await listPeers();
+async function poll(onlyKeys = null) {
+  const allPeers = await listPeers();
+  // onlyKeys：事件驱动模式下只处理"刚有消息的那几个会话"，
+  // 不再每次把所有好友/群都拉一遍历史（那是 7200 次/天的来源）。
+  const peers = onlyKeys
+    ? allPeers.filter((p) => onlyKeys.has(`${p.isGroup ? 'g' : 'p'}${p.peer}`))
+    : allPeers;
 
   for (const { isGroup, peer, peerName } of peers) {
     const key = `${isGroup ? 'g' : 'p'}${peer}`;
@@ -497,7 +502,7 @@ async function poll() {
   }
 }
 
-async function runOnce() {
+async function runOnce(onlyKeys = null) {
   state.stats.polls += 1;
   // 掉线检测：get_login_info 掉线时仍返回缓存信息，只有 get_status.online 会变 false。
   // 不检测的话，表现就是"进程活着、日志在滚、但一条消息都收不到"。
@@ -531,7 +536,7 @@ async function runOnce() {
   }
 
   try {
-    await poll();
+    await poll(onlyKeys);
   } catch (e) {
     log('轮询失败: ' + e.message);
   }
@@ -690,6 +695,79 @@ const lastSeenMs = (head.time ? head.time * 1000 : Date.now()) - 0;
   fresh.length = 0;
 }
 
+// ————— 事件驱动（WebSocket） —————
+//
+// 为什么改：HTTP 轮询每 10~15 秒一次，一天 ~7200 次调用，只为"发现有没有新消息"。
+// 这不是被踢的唯一原因，但它是我自己制造的最大一类无用请求。
+// NapCat 的 httpServers 开了 enableWebsocket，可以直接连 ws://127.0.0.1:3000/?access_token=...
+// 来消息由服务端推送（poke-watch 一直是这么干的），轮询只留作兜底对账。
+//
+// 保留轮询的两个理由（不是偷懒）：
+//   1) 断线重连期间漏掉的事件要靠它补
+//   2) 引用/上下文要按历史顺序拼，事件流只给到"来了一条"
+const pendingPeers = new Map();     // key -> {isGroup, peer, peerName}
+let pollWake = null;                // 唤醒主循环
+let lastReconcile = 0;
+
+function wakeLoop() {
+  if (pollWake) { const f = pollWake; pollWake = null; f(); }
+}
+
+function peerKeyOf(isGroup, peer) {
+  return `${isGroup ? 'g' : 'p'}${peer}`;
+}
+
+function startWs() {
+  const url = `${cfg.http.replace(/^http/, 'ws')}/?access_token=${encodeURIComponent(cfg.token ?? '')}`;
+  let attempt = 0;
+  let ws;
+
+  const connect = () => {
+    attempt += 1;
+    try { ws = new WebSocket(url); } catch (e) { log('WS 建连失败: ' + e.message); setTimeout(connect, 5000); return; }
+
+    ws.addEventListener('open', () => {
+      attempt = 0;
+      log('WS 已连上（消息由服务端推送，不再靠轮询发现）');
+    });
+
+    ws.addEventListener('message', (ev) => {
+      let j;
+      try { j = JSON.parse(String(ev.data)); } catch { return; }
+      if (j.post_type !== 'message') return;
+      const isGroup = j.message_type === 'group';
+      const peer = String(isGroup ? j.group_id : j.user_id);
+      if (!peer) return;
+      if (selfUin && String(j.user_id) === String(selfUin)) return;      // 自己发的不算
+      if (cfg.ignorePeers.includes(peer)) return;
+      if (isGroup && cfg.groups.length && !cfg.groups.includes(Number(peer))) return;
+      if (!isGroup && cfg.includePrivate !== true) return;
+
+      const key = peerKeyOf(isGroup, peer);
+      if (!pendingPeers.has(key)) {
+        pendingPeers.set(key, {
+          isGroup,
+          peer,
+          peerName: isGroup
+            ? (j.group_name ?? peer)
+            : (j.sender?.card || j.sender?.nickname || peer),
+        });
+      }
+      wakeLoop();
+    });
+
+    ws.addEventListener('error', () => { /* close 里统一处理 */ });
+
+    ws.addEventListener('close', () => {
+      const wait = Math.min(60_000, 1000 * 2 ** Math.min(attempt, 5));
+      log(`WS 断开，${Math.round(wait / 1000)}s 后重连（第 ${attempt} 次）；期间靠轮询兜底`);
+      setTimeout(connect, wait);
+    });
+  };
+
+  connect();
+}
+
 // ————— 启动 —————
 log(`监视启动：${selfUin || '?'} 每 ${cfg.intervalMinSec}~${cfg.intervalMaxSec}s 随机轮询，全部消息即时投递`);
 log(`覆盖：私聊${cfg.includePrivate ? '开' : '关'}，群 ${cfg.groups.length ? cfg.groups.join(',') : '全部'}`);
@@ -712,14 +790,36 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('exit', () => { try { saveStateAtomic(STATE_PATH, state); } catch {} });
 
+const WS_MODE = cfg.mode !== 'poll';          // 默认事件驱动；配 "mode": "poll" 可退回纯轮询
+const RECONCILE_SEC = Number(cfg.reconcileSec ?? 120);
+
+if (WS_MODE) startWs();
+
 while (!stopping) {
-  try {
-    await runOnce();
-  } catch (e) {
-    log('轮询异常: ' + e.message);
+  const now = Date.now();
+  const needReconcile = !WS_MODE || now - lastReconcile >= RECONCILE_SEC * 1000;
+
+  // 有待处理事件，或者到了对账时间，才真去拉历史
+  const onlyKeys = (!needReconcile && pendingPeers.size) ? new Set(pendingPeers.keys()) : null;
+  if (onlyKeys || needReconcile) {
+    try {
+      await runOnce(WS_MODE ? onlyKeys : null);
+      if (needReconcile) lastReconcile = Date.now();
+    } catch (e) {
+      log('轮询异常: ' + e.message);
+    }
+    if (onlyKeys) { for (const k of onlyKeys) pendingPeers.delete(k); }
   }
-  // 每轮重新抽一个间隔：10~15 秒之间随机。
-  // 固定间隔的请求节奏太规整，长期看像脚本；随机一点更像人在刷。
-  const waitSec = cfg.intervalMinSec + Math.random() * (cfg.intervalMaxSec - cfg.intervalMinSec);
-  await sleep(waitSec * 1000);
+
+  if (WS_MODE) {
+    // 等事件唤醒；最长等到下次对账时间。没有事件时一次 API 都不发。
+    const waitMs = Math.max(1000, RECONCILE_SEC * 1000 - (Date.now() - lastReconcile));
+    await new Promise((resolve) => {
+      const t = setTimeout(() => { pollWake = null; resolve(); }, waitMs);
+      pollWake = () => { clearTimeout(t); resolve(); };
+    });
+  } else {
+    const waitSec = cfg.intervalMinSec + Math.random() * (cfg.intervalMaxSec - cfg.intervalMinSec);
+    await sleep(waitSec * 1000);
+  }
 }
